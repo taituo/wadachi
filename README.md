@@ -1,5 +1,7 @@
 # wadachi
 
+<p align="center"><img src="docs/wadachi.png" alt="Two wheel ruts curving across open ground" width="320"></p>
+
 轍 *wadachi*: the ruts a wheel leaves in a road. The route that was actually
 taken, not the one that was planned.
 
@@ -11,6 +13,9 @@ way.
 It keeps what happened and where each fact came from. It summarises nothing.
 Summaries are cheap to make when someone asks a question; a lost detail cannot
 be made at all.
+
+Why this is not just observability, and what forged histories, poisoned
+records, learning and dreaming have to do with it: [WHY.md](WHY.md).
 
 ## The rules
 
@@ -50,6 +55,7 @@ agent worked, two minutes nine seconds, one file changed.
 
 | Path | What |
 |---|---|
+| [`WHY.md`](WHY.md) | why the format exists, and what it is not |
 | [`SPEC.md`](SPEC.md) | the format, version 0.1 (draft) |
 | [`src/wadachi/schemas/`](src/wadachi/schemas/) | JSON Schemas for session lines and annotation lines |
 | [`src/wadachi/`](src/wadachi/) | reference tools: validation, digests, ids, canonical JSON |
