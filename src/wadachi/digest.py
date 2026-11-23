@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import re
+import unicodedata
 from collections import Counter
-from datetime import datetime, timezone
+
+from .times import instant_ns
 
 RULE = "wadachi-digest/1"
 
@@ -21,30 +22,15 @@ KIND_LETTERS = [
 ]
 MAX_PATHS = 5
 
-_TS = re.compile(
-    r"^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|([+-])(\d{2}):(\d{2}))$"
-)
 
-
-def parse_time(value: str) -> datetime:
-    """Parse an RFC 3339 timestamp, keeping at most microseconds."""
-    m = _TS.match(value)
-    if not m:
-        raise ValueError(f"not an RFC 3339 timestamp: {value!r}")
-    year, month, day, hour, minute, second = (int(m.group(i)) for i in range(1, 7))
-    micro = int((m.group(7) or "0")[:6].ljust(6, "0"))
-    dt = datetime(year, month, day, hour, minute, second, micro, tzinfo=timezone.utc)
-    if m.group(8) != "Z":
-        sign = 1 if m.group(9) == "+" else -1
-        dt -= sign * (int(m.group(10)) * 3600 + int(m.group(11)) * 60) * _SECOND
-    return dt
-
-
-_SECOND = datetime(2000, 1, 1, 0, 0, 1) - datetime(2000, 1, 1)
-
-
-def _escape_path(path: str) -> str:
-    return path.replace("%", "%25").replace(" ", "%20").replace("\t", "%09").replace("\n", "%0A")
+def _path_token(path: str) -> str:
+    out = ["@"]
+    for ch in path:
+        if ch == "%" or ch.isspace() or unicodedata.category(ch) == "Cc":
+            out.append("".join(f"%{b:02X}" for b in ch.encode("utf-8")))
+        else:
+            out.append(ch)
+    return "".join(out)
 
 
 def _duration(seconds: int) -> str:
@@ -57,18 +43,23 @@ def _duration(seconds: int) -> str:
     return f"{s}s"
 
 
+def _data(e: dict) -> dict:
+    d = e.get("data")
+    return d if isinstance(d, dict) else {}
+
+
 def digest_turn(turn: list[dict], failed_calls: set[str]) -> str:
-    """The digest line of one turn, given its events in order."""
+    """The digest line of one turn, given its events in order; the first is its prompt."""
     prompt = turn[0]
     tokens = [f"t{prompt['turn']}"]
 
     letter = "h" if prompt.get("actor") == "human" else "p"
-    text = prompt.get("data", {}).get("text")
+    text = _data(prompt).get("text")
     tokens.append(f"{letter}{len(text)}" if isinstance(text, str) else f"{letter}?")
 
     calls = [e for e in turn if e.get("type") == "tool_call"]
-    counts = Counter(c.get("data", {}).get("kind", "other") for c in calls)
-    failures = Counter(c.get("data", {}).get("kind", "other") for c in calls if c.get("id") in failed_calls)
+    counts = Counter(_data(c).get("kind", "other") for c in calls)
+    failures = Counter(_data(c).get("kind", "other") for c in calls if c.get("id") in failed_calls)
     for kind, ch in KIND_LETTERS:
         if counts[kind]:
             tokens.append(f"{ch}{counts[kind]}" + (f"!{failures[kind]}" if failures[kind] else ""))
@@ -82,19 +73,19 @@ def digest_turn(turn: list[dict], failed_calls: set[str]) -> str:
         tokens.append("c")
 
     if prompt.get("t"):
-        start = parse_time(prompt["t"])
-        latest = max(parse_time(e["t"]) for e in turn if e.get("t"))
-        seconds = int((latest - start).total_seconds())
-        if seconds > 0:
+        start = instant_ns(prompt["t"])
+        latest = max(instant_ns(e["t"]) for e in turn if e.get("t"))
+        seconds = (latest - start) // 1_000_000_000
+        if seconds >= 1:
             tokens.append(_duration(seconds))
 
     paths: list[str] = []
     for c in calls:
-        if c.get("data", {}).get("kind") in ("write", "edit"):
-            for path in c.get("data", {}).get("paths", []):
-                if path not in paths:
+        if _data(c).get("kind") in ("write", "edit"):
+            for path in _data(c).get("paths", []):
+                if isinstance(path, str) and path and path not in paths:
                     paths.append(path)
-    tokens += [_escape_path(x) for x in paths[:MAX_PATHS]]
+    tokens += [_path_token(p) for p in paths[:MAX_PATHS]]
     if len(paths) > MAX_PATHS:
         tokens.append(f"+{len(paths) - MAX_PATHS}")
     return " ".join(tokens)
@@ -105,14 +96,14 @@ def failed_calls(events: list[dict]) -> set[str]:
     failed = set()
     for e in events:
         target = e.get("of")
-        if not target:
+        if not isinstance(target, str):
             continue
-        exit_code = e.get("data", {}).get("exit_code")
+        exit_code = _data(e).get("exit_code")
         if e.get("type") in ("tool_result", "observation") and isinstance(exit_code, int) and exit_code != 0:
             failed.add(target)
         elif e.get("type") == "error":
             failed.add(target)
-    calls = {e["id"] for e in events if e.get("type") == "tool_call"}
+    calls = {e.get("id") for e in events if e.get("type") == "tool_call"}
     return failed & calls
 
 
@@ -121,7 +112,7 @@ def digests(events: list[dict]) -> list[tuple[str, str]]:
     failed = failed_calls(events)
     turns: dict[int, list[dict]] = {}
     for e in events:
-        if e.get("turn", 0) >= 1:
+        if isinstance(e.get("turn"), int) and e["turn"] >= 1:
             turns.setdefault(e["turn"], []).append(e)
     return [(turn[0]["id"], digest_turn(turn, failed)) for _, turn in sorted(turns.items())]
 

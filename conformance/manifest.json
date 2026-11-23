@@ -1,7 +1,16 @@
 {
   "invalid": {
+    "invalid/abbreviated-tree-id.jsonl": [
+      "schema"
+    ],
+    "invalid/annotation-human-marked-observed": [
+      "schema"
+    ],
     "invalid/annotation-layer-mismatch": [
       "annotation-layer"
+    ],
+    "invalid/annotation-layer-name-with-hyphen": [
+      "schema"
     ],
     "invalid/annotation-model-not-synthetic": [
       "schema"
@@ -24,18 +33,24 @@
     "invalid/dangling-of.jsonl": [
       "dangling-of"
     ],
-    "invalid/digest-not-by-rule": [
+    "invalid/digest-by-another-rule": [
       "schema"
     ],
-    "invalid/duplicate-id.jsonl": [
-      "duplicate-id"
+    "invalid/digest-not-on-a-prompt": [
+      "digest"
+    ],
+    "invalid/digest-value-wrong": [
+      "digest"
+    ],
+    "invalid/duplicate-event.jsonl": [
+      "duplicate-id",
+      "duplicate-src"
     ],
     "invalid/event-id-not-derived.jsonl": [
       "id"
     ],
     "invalid/header-missing.jsonl": [
-      "header",
-      "unknown-source"
+      "header"
     ],
     "invalid/header-twice.jsonl": [
       "header"
@@ -43,11 +58,23 @@
     "invalid/hook-event-misplaced.jsonl": [
       "order"
     ],
+    "invalid/hook-files-out-of-key-order.jsonl": [
+      "order"
+    ],
     "invalid/how-without-inferred.jsonl": [
+      "schema"
+    ],
+    "invalid/key-not-escaped.jsonl": [
       "schema"
     ],
     "invalid/kind-not-a-defined-value.jsonl": [
       "schema"
+    ],
+    "invalid/landmark-unknown-kind": [
+      "schema"
+    ],
+    "invalid/lone-surrogate.jsonl": [
+      "encoding"
     ],
     "invalid/no-final-newline.jsonl": [
       "encoding"
@@ -55,17 +82,26 @@
     "invalid/non-integer-in-defined-field.jsonl": [
       "schema"
     ],
+    "invalid/not-a-store": [
+      "store"
+    ],
     "invalid/not-canonical.jsonl": [
       "canonical"
     ],
     "invalid/not-json.jsonl": [
       "json"
     ],
+    "invalid/number-beyond-2-53.jsonl": [
+      "canonical"
+    ],
     "invalid/observation-not-from-hook.jsonl": [
       "schema"
     ],
     "invalid/of-order.jsonl": [
       "of-order"
+    ],
+    "invalid/position-with-leading-zero.jsonl": [
+      "schema"
     ],
     "invalid/seq-gap.jsonl": [
       "seq"
@@ -76,7 +112,19 @@
     "invalid/session-id-not-derived.jsonl": [
       "session-id"
     ],
-    "invalid/timestamp-without-zone.jsonl": [
+    "invalid/time-does-not-exist.jsonl": [
+      "time"
+    ],
+    "invalid/time-leap-second-not-at-59.jsonl": [
+      "time"
+    ],
+    "invalid/time-not-utc.jsonl": [
+      "schema"
+    ],
+    "invalid/time-trailing-zero.jsonl": [
+      "schema"
+    ],
+    "invalid/time-without-zone.jsonl": [
       "schema"
     ],
     "invalid/tool-call-without-kind.jsonl": [
@@ -90,6 +138,9 @@
     ],
     "invalid/unknown-source.jsonl": [
       "unknown-source"
+    ],
+    "invalid/unknown-version.jsonl": [
+      "version"
     ]
   },
   "valid": [
@@ -97,6 +148,7 @@
     "valid/minimal.jsonl",
     "valid/no-native-id-no-times.jsonl",
     "valid/database-keys.jsonl",
+    "valid/late-result-and-two-hook-files.jsonl",
     "valid/store"
   ]
 }

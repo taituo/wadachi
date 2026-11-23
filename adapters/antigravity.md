@@ -17,9 +17,12 @@ Mapping notes:
 
 - Read events from `transcript_full.jsonl`. List `transcript.jsonl` in `files`
   only if you read anything from it, with `truncated: true`.
-- `step_index` is a stable key: positions are `@step/<index>`.
-- A fork records its parent conversation and step: header `parent` with
-  relation `fork` and the step's event id, if the parent's record shows it.
+- If `step_index` turns out to be stable when the harness rewrites a
+  transcript (unverified), positions are `@step/<index>`; otherwise byte
+  offsets.
+- A fork should point at its parent conversation and step: header `parent`
+  with relation `fork` and the step's event id. Whether the record shows the
+  parent is unverified.
 
 ## Hooks
 

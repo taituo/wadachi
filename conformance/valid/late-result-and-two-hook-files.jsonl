@@ -1,0 +1,9 @@
+{"converter":{"name":"conformance","version":"0.1.0"},"files":{"f1":{"format":"example-jsonl","path":"~/.example/sessions/conf-0003.jsonl","role":"record","sha256":"02ceb312cdeac58a080dc95cb7a4bcdcb29ec7749d35d0d801f29f54ba528ea6"},"f2":{"format":"wadachi-hook/0.1","path":"~/.wadachi/hooks/a.jsonl","role":"hook","sha256":"14454248d5aebf4dc2f16798f52774d1275b03bc98ead0f37d2b0511ebc135ce"},"f3":{"format":"wadachi-hook/0.1","path":"~/.wadachi/hooks/b.jsonl","role":"hook","sha256":"6ddfd157275f910f1ae15b7545057068fcea64b8fc71d7268703fdde1f6d2a2b"}},"format":"wadachi/0.1","harness":{"name":"example-harness","version":"1.0.0"},"id":"s_8496e29f5f72a05b","native_id":"conf-0003","type":"session"}
+{"actor":"human","data":{"text":"build"},"id":"e_898b2e1f7b5127c8","seq":0,"src":"f1:0","t":"2016-12-31T23:59:58Z","turn":1,"type":"prompt"}
+{"actor":"agent","data":{"call_id":"c1","kind":"shell"},"id":"e_b7b38a29a5403884","seq":1,"src":"f1:50","turn":1,"type":"tool_call"}
+{"actor":"human","data":{"text":"and test"},"id":"e_9f1f32311671e689","seq":2,"src":"f1:90","t":"2016-12-31T23:59:60Z","turn":2,"type":"prompt"}
+{"actor":"tool","data":{"exit_code":0},"id":"e_a6bd4cd8c21928f7","of":"e_b7b38a29a5403884","seq":3,"src":"f1:140","t":"2017-01-01T00:00:02.5Z","turn":2,"type":"tool_result"}
+{"actor":"hook","data":{"exit_code":0},"id":"e_3b3b8b15a5cf2c59","of":"e_b7b38a29a5403884","seq":4,"src":"f2:0","turn":2,"type":"observation"}
+{"actor":"hook","data":{"duration_ms":3000},"id":"e_da7baf3e6fd07aa9","of":"e_b7b38a29a5403884","seq":5,"src":"f3:0","turn":2,"type":"observation"}
+{"actor":"hook","data":{"context_tokens":1200},"id":"e_211a1005edc946cf","seq":6,"src":"f2:80","turn":2,"type":"manifest"}
+{"actor":"hook","data":{"window_tokens":200000},"id":"e_ccc5f600f31ee7d9","seq":7,"src":"f3:60","turn":2,"type":"manifest"}

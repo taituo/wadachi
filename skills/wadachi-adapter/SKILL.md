@@ -25,11 +25,20 @@ Before writing code, look at real files on the machine.
 - Is there more than one copy of a session, for example a truncated and a full
   transcript? Read events from the full one; list every file you read in the
   header's `files`, with `truncated: true` on the ones known to cut content.
-- What is the harness's own session id? Where are subagents, forks and resumed
-  sessions kept, and how do they point at their parent?
-- Do records carry their own ids (UUIDs, row keys)? Then positions are `@<id>`,
-  which survive the harness rewriting its file. Otherwise byte offsets.
-- Which times have a zone? A time without one is kept in `raw` and gets no `t`.
+- What is the harness's own session id, and is it unique on its own? Some
+  subagent ids are unique only within their parent; then `native_id` is the
+  parent's native id, `/`, and the child's id. Where are subagents, forks and
+  resumed sessions kept, and how do they point at their parent?
+- Do records carry their own ids (UUIDs, row keys)? Then positions are
+  `@<id>`, written with `wadachi.ids.escape_key`, and survive the harness
+  rewriting its file. Otherwise byte offsets, without leading zeros.
+- Which times have a zone? `wadachi.times.from_source` converts a zoned time to
+  wadachi's one form (UTC, `Z`, no trailing zeros) and returns `None` for one
+  without a zone or that does not exist; such values stay in `raw` and give no
+  `t`. Unix times convert with `wadachi.times.from_unix`.
+- Do any strings hold lone surrogates (text cut in the middle of an emoji)?
+  Replace each with U+FFFD. Do any numbers exceed 2^53 − 1, such as nanosecond
+  timestamps? Write them as strings.
 
 Write what you found into `adapters/<harness>.md` as you go, marking each fact
 as seen in real files (with the version) or taken from documentation.
@@ -48,8 +57,14 @@ section 4.2). Things that are easy to get wrong:
 - **Who sent the prompt.** In headless and protocol sessions the prompt usually
   comes from a program: `actor: "caller"`, not `human`.
 - **Exit codes.** Find where the real exit code is. Keep the harness's own
-  status as `status_as_recorded` next to it. Harnesses have been seen to record
-  a failed shell call as a success.
+  status as `status_as_recorded` next to it: the value of the field the harness
+  uses, a string as it is, anything else as its canonical JSON (`true`).
+  Document which field. Harnesses have been seen to record a failed shell call
+  as a success.
+- **Arguments.** Keep `args` as recorded. Arguments the harness stored as a
+  JSON-encoded string stay a string.
+- **Missing fields stay missing.** No `text` means no `text`, not `""`; no tool
+  name means no `tool`. The digest shows the difference (`h?` against `h0`).
 - **Paths.** Put every path the tool names in `paths`, in order. A multi-file
   read keeps all of them, not the first. Paths parsed out of a shell command are
   a guess: record them only with `how: {"data.paths": "inferred:<rule>"}`.
@@ -70,8 +85,13 @@ code, versioned with the converter; a model never picks a kind.
 The template already does the parts every converter shares; do not rewrite
 them:
 
-- `files` with the SHA-256 of the bytes converted
-- ids from `wadachi.session_id` and `wadachi.event_id`
+- reading a live file once, up to its last complete line, and hashing exactly
+  those bytes
+- `path` in `files` as SPEC.md section 3.3 defines it: absolute, symbolic links
+  not resolved, home as `~`
+- file keys: `record` sources first, then `hook`, then `aux`
+- ids from `wadachi.session_id` and `wadachi.event_id`; an event id depends
+  only on the session id and `src`, so moving the raw files changes no ids
 - `of` resolved from call ids
 - hook events placed after the event they observe and its results (SPEC.md
   section 5)
@@ -86,11 +106,17 @@ directory the agent can write). A recommended line format, which the template
 reads as `wadachi-hook/0.1`:
 
 ```json
-{"at":"2026-11-23T18:02:40.311Z","event":"post_tool","session":"<native id>","call_id":"toolu_03","exit_code":0,"tree_before":"git-tree:5b1e09c4","tree_after":"git-tree:c0a47d21","duration_ms":292,"cwd":"/work/x"}
+{"at":"2026-11-23T18:02:40.311Z","event":"post_tool","session":"<native id>","call_id":"toolu_03","exit_code":0,"tree_before":"git-tree:51de2b835bd35a67eb32dbcd3d77d4b96e5aa39d","tree_after":"git-tree:405906c9d5be6ae5393ca65fb0e7c38e0d585ecb","duration_ms":292,"cwd":"/work/x"}
 ```
 
-- `tree_before` and `tree_after`: `git add -A && git write-tree` against a
-  separate `GIT_DIR` and index, so the agent's own repository is untouched.
+- `at` in UTC from the hook's own clock.
+- `tree_before` and `tree_after`: the full tree id from `git add -A && git
+  write-tree` against a separate `GIT_DIR` and index, so the agent's own
+  repository is untouched. Never abbreviate it. It covers what git sees in the
+  working tree; ignored files and writes outside the tree are not in it.
+- Those tree ids are also how outcomes are found later: a commit whose tree
+  equals an observation's `tree_after` came from that call, and can be linked
+  as an `observed` `landmark` annotation.
 - Take the exit code and duration from the process, not from the harness.
 - A hook must never print anything the harness would put in the model's
   context. On failure it exits 0 and logs the gap, so the agent keeps working

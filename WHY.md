@@ -94,6 +94,20 @@ that has not been used in weeks is dropped; a correction that keeps recurring
 becomes a candidate for a new one. A note never becomes a fact by being
 dreamed about: synthetic stays synthetic, however often it is confirmed.
 
+## Outcomes, not ratings
+
+Was a session good? A rating is someone's opinion, given once. An outcome is
+a fact that keeps arriving: the commit the session made, whether it passed CI,
+whether its pull request was merged, whether it was reverted a week later,
+whether a human rewrote what the agent wrote.
+
+Wadachi links sessions to these as `landmark` annotations, usually long after
+the session ended. A link a rule can prove (the hook saw exactly the tree that
+was later committed) is `observed`. A model's guess at which session caused a
+bug is `synthetic`, points at the events it rests on, and stays a hypothesis
+until someone confirms it. Finding causes afterwards is discovery, not
+judgement.
+
 ## Paths that cross
 
 Agents working in parallel, for different reasons, cross each other's paths:

@@ -12,7 +12,9 @@
 
 ## Hooks
 
-Server plugins can hook (documented):
+Server plugins can hook, as documented at
+<https://opencode.ai/v2/docs/build/plugins/server/> (checked 2026-11-23; the
+older plugin page does not list these names):
 
 | Domain | Hook | Use for wadachi |
 |---|---|---|

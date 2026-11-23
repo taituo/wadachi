@@ -1,4 +1,4 @@
-"""The examples are valid, their digests are current, and SPEC.md agrees with the schemas."""
+"""The examples are valid, their digests are current, and SPEC.md agrees with the schemas and the validator."""
 
 import json
 import re
@@ -7,7 +7,7 @@ from pathlib import Path
 from wadachi import schemas
 from wadachi.cli import main
 from wadachi.digest import annotations
-from wadachi.validate import validate_session, validate_store
+from wadachi.validate import CODES, validate_session, validate_store
 
 ROOT = Path(__file__).resolve().parent.parent
 STORE = ROOT / "examples" / "store"
@@ -25,31 +25,45 @@ def test_example_digests_are_current():
         assert stored == annotations(events), f.name
 
 
-def _table_column(heading: str) -> list[str]:
-    """First-column values of the first table after a heading in SPEC.md."""
-    section = SPEC.split(heading, 1)[1]
-    rows = re.findall(r"^\| `([a-z_-]+)` \|", section.split("\n## ", 1)[0].split("\n### ", 1)[0], re.M)
-    return rows
+def _section(heading: str) -> str:
+    return SPEC.split(heading, 1)[1].split("\n## ", 1)[0].split("\n### ", 1)[0]
+
+
+def _first_column(heading: str) -> list[str]:
+    return re.findall(r"^\| `([a-z_-]+)` \|", _section(heading), re.M)
 
 
 def test_spec_event_types_match_schema():
-    schema_types = schemas.load("record")["$defs"]["event"]["properties"]["type"]["enum"]
-    assert _table_column("### 4.2 Types") == schema_types
+    assert _first_column("### 4.2 Types") == schemas.load("record")["$defs"]["event"]["properties"]["type"]["enum"]
+
+
+def _rules():
+    return {r["if"]["properties"]["type"]["const"]: r["then"] for r in schemas.load("record")["$defs"]["event"]["allOf"]}
 
 
 def test_spec_kinds_match_schema():
-    rules = schemas.load("record")["$defs"]["event"]["allOf"]
-    tool_call = next(r for r in rules if r["if"]["properties"]["type"]["const"] == "tool_call")
-    kinds = tool_call["then"]["properties"]["data"]["properties"]["kind"]["enum"]
-    assert _table_column("### 4.4 Tool kinds") == kinds
+    assert _first_column("### 4.4 Tool kinds") == _rules()["tool_call"]["properties"]["data"]["properties"]["kind"]["enum"]
 
 
-def test_spec_actors_per_type_match_schema():
-    section = SPEC.split("### 4.2 Types", 1)[1].split("\n### ", 1)[0]
-    spec = {t: [a.strip() for a in actors.split(",")] for t, actors in re.findall(r"^\| `([a-z_]+)` \| ([a-z, ]+) \|", section, re.M)}
-    rules = schemas.load("record")["$defs"]["event"]["allOf"]
-    schema = {r["if"]["properties"]["type"]["const"]: r["then"]["properties"]["actor"]["enum"] for r in rules}
-    assert spec == schema
+def test_spec_actors_and_data_fields_per_type_match_schema():
+    rows = re.findall(r"^\| `([a-z_]+)` \| ([a-z, ]+) \| (.*) \|$", _section("### 4.2 Types"), re.M)
+    rules = _rules()
+    for type_, actors, fields in rows:
+        then = rules[type_]
+        assert [a.strip() for a in actors.split(",")] == then["properties"]["actor"]["enum"], type_
+        spec_fields = re.findall(r"`([a-z0-9_]+)`", fields.split(":")[0] if type_ in ("steer", "setting", "manifest") else fields)
+        spec_fields = [f for f in spec_fields if f not in ("asked", "allowed", "denied")]
+        assert sorted(spec_fields) == sorted(then["properties"]["data"]["properties"]), type_
+
+
+def test_spec_problem_codes_match_validator():
+    assert tuple(_first_column("## 14. Conformance")) == CODES
+
+
+def test_spec_layers_have_schema_rules():
+    defined = _first_column("## 10. Annotations")[6:]  # skip the field table: on, layer, v, by, origin, at
+    with_rules = [r["if"]["properties"]["layer"]["const"] for r in schemas.load("annotation")["allOf"] if "layer" in r["if"].get("properties", {})]
+    assert sorted(defined) == sorted(with_rules)
 
 
 def test_cli_validate_and_digest(capsys):

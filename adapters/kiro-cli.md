@@ -1,7 +1,7 @@
 # Kiro CLI
 
 The harness behind the first measurements of this project. A read-only session
-reader for it exists (ksess); its converter to wadachi is the first to finish.
+reader for it exists (ksess), which a converter to wadachi can build on.
 
 ## Records
 

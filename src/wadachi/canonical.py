@@ -1,7 +1,10 @@
 """Canonical JSON serialisation, as defined by RFC 8785 (JCS).
 
 Every line of a wadachi file is serialised this way, so two conversions of the
-same source can be compared byte for byte.
+same source can be compared byte for byte. Two rules from SPEC.md section 2
+apply on top: strings must be valid Unicode (RFC 8785 requires an error for
+lone surrogates), and no number may exceed 2^53 - 1 in magnitude (write it as
+a string instead), so every reader gets back exactly what was written.
 """
 
 from __future__ import annotations
@@ -9,7 +12,7 @@ from __future__ import annotations
 import math
 from decimal import Decimal
 
-_MAX_SAFE_INTEGER = 2**53 - 1
+MAX_SAFE_INTEGER = 2**53 - 1
 
 _SHORT_ESCAPES = {
     0x08: "\\b",
@@ -20,6 +23,10 @@ _SHORT_ESCAPES = {
     0x22: '\\"',
     0x5C: "\\\\",
 }
+
+
+class CanonicalError(ValueError):
+    """A value that has no canonical form under SPEC.md section 2."""
 
 
 def dumps(value: object) -> str:
@@ -37,10 +44,8 @@ def _write(value: object, out: list[str]) -> None:
     elif value is False:
         out.append("false")
     elif isinstance(value, int):
-        if abs(value) > _MAX_SAFE_INTEGER:
-            raise ValueError(
-                f"integer {value} is outside the range JSON numbers hold exactly; write it as a string"
-            )
+        if abs(value) > MAX_SAFE_INTEGER:
+            raise CanonicalError(f"the number {value} exceeds 2^53 - 1; write it as a string")
         out.append(str(value))
     elif isinstance(value, float):
         out.append(_number(value))
@@ -59,11 +64,13 @@ def _write(value: object, out: list[str]) -> None:
                 raise TypeError(f"object keys must be strings, not {type(key).__name__}")
         out.append("{")
         # RFC 8785 sorts keys by their UTF-16 code units. Comparing big-endian
-        # UTF-16 bytes gives exactly that order.
-        for i, key in enumerate(sorted(value, key=lambda k: k.encode("utf-16-be", "surrogatepass"))):
+        # UTF-16 bytes gives exactly that order. Keys are valid Unicode by the
+        # time this runs, because _string has rejected lone surrogates.
+        keys = [(_string(k), k) for k in value]
+        for i, (encoded, key) in enumerate(sorted(keys, key=lambda kk: kk[1].encode("utf-16-be"))):
             if i:
                 out.append(",")
-            out.append(_string(key))
+            out.append(encoded)
             out.append(":")
             _write(value[key], out)
         out.append("}")
@@ -78,10 +85,10 @@ def _string(s: str) -> str:
         code = ord(ch)
         if code in _SHORT_ESCAPES:
             out.append(_SHORT_ESCAPES[code])
-        elif code < 0x20 or 0xD800 <= code <= 0xDFFF:
-            # Control characters, and lone surrogates, which cannot be encoded
-            # as UTF-8, are written as \u escapes in lowercase hex.
+        elif code < 0x20:
             out.append(f"\\u{code:04x}")
+        elif 0xD800 <= code <= 0xDFFF:
+            raise CanonicalError("a string holds a lone surrogate, which is not valid Unicode")
         else:
             out.append(ch)
     out.append('"')
@@ -89,16 +96,23 @@ def _string(s: str) -> str:
 
 
 def _number(x: float) -> str:
-    """Format a double as ECMAScript's Number.prototype.toString does."""
     if math.isnan(x) or math.isinf(x):
-        raise ValueError("NaN and infinity are not JSON values")
+        raise CanonicalError("NaN and infinity are not JSON values")
+    if abs(x) > MAX_SAFE_INTEGER:
+        raise CanonicalError(f"the number {x!r} exceeds 2^53 - 1; write it as a string")
+    return ecmascript_number(x)
+
+
+def ecmascript_number(x: float) -> str:
+    """Format a finite double as ECMAScript's Number.prototype.toString does (RFC 8785 section 3.2.2.3)."""
     if x == 0:
         return "0"  # covers -0.0 as well
     sign = "-" if x < 0 else ""
     # repr gives the shortest digit string that round-trips, as ECMAScript does.
     _, digit_tuple, exponent = Decimal(repr(abs(x))).as_tuple()
-    digits = "".join(map(str, digit_tuple)).rstrip("0")
-    exponent += len("".join(map(str, digit_tuple))) - len(digits)
+    all_digits = "".join(map(str, digit_tuple))
+    digits = all_digits.rstrip("0")
+    exponent += len(all_digits) - len(digits)
     k = len(digits)
     n = exponent + k  # the value is 0.digits * 10**n
     if k <= n <= 21:

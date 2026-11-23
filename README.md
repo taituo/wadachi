@@ -35,7 +35,7 @@ annotations/digest/s_e6468e8dce041668.jsonl
 ```
 
 ```json
-{"actor":"tool","data":{"call_id":"tooluse_17","exit_code":1,"kind":"shell","status_as_recorded":"success","text":"test result: FAILED. 41 passed; 1 failed","tool":"execute_bash"},"id":"e_c8beae1ebabaf3e6","of":"e_e35674b55b27eaed","seq":2,"src":"f1:2412","turn":1,"type":"tool_result","x":{"kiro":{"credits":"0.42"}}}
+{"actor":"tool","data":{"call_id":"tooluse_17","exit_code":1,"kind":"shell","status_as_recorded":"success","text":"test result: FAILED. 41 passed; 1 failed","tool":"execute_bash"},"id":"e_b9dd42b7a14e6f4a","of":"e_c39b7d9d395c0886","seq":2,"src":"f1:2412","turn":1,"type":"tool_result","x":{"kiro":{"credits":"0.42"}}}
 ```
 
 A shell call that failed, which the harness recorded as a success. Both are
@@ -44,12 +44,12 @@ kept, side by side.
 Each turn also gets a digest: one line, computed, never written by a model.
 
 ```
-t1 h67 r1 e1 s1!1 q1 a1 ^1 2m9s /home/tuomas/work/ksess/src/parse.rs
+t1 h67 r1 e1 s1!1 q1 a1 ^1 2m9s @/home/tuomas/work/ksess/src/parse.rs
 ```
 
 Turn 1: a human prompt of 67 characters, one read, one edit, one shell call
 that failed, one search, one subagent, one correction from the human while the
-agent worked, two minutes nine seconds, one file changed.
+agent worked, two minutes nine seconds, and the one path its edit named.
 
 ## In this repository
 

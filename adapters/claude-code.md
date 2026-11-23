@@ -19,15 +19,12 @@ Documented events useful to wadachi: `SessionStart`, `UserPromptSubmit`,
 `PreCompact`, `PostCompact`, `PreModelSwitch`, `PostModelSwitch`,
 `InstructionsLoaded`, `FileChanged`, `CwdChanged`, `Stop` and `SessionEnd`.
 
-- Plain standard output of `UserPromptSubmit`, `UserPromptExpansion`,
-  `SessionStart` and `PostModelSwitch` hooks is added to the model's context,
-  and `additionalContext` in structured output is added on many more events,
-  wrapped as a system reminder (documented). A wadachi hook writes only to its
-  own log and prints nothing.
-- `InstructionsLoaded` is the natural source for a `manifest` event.
-- `PostToolUseFailure` and `PermissionDenied` are direct sources for failures
-  and permission decisions.
-- Headless runs use print mode (`claude -p`): header `mode: "headless"`.
+| Fact | Status |
+|---|---|
+| Plain standard output of `UserPromptSubmit`, `UserPromptExpansion`, `SessionStart` and `PostModelSwitch` hooks is added to the model's context, and `additionalContext` in structured output is added on many more events, wrapped as a system reminder | documented; a wadachi hook writes only to its own log and prints nothing |
+| Headless runs use print mode (`claude -p`) | documented; header `mode: "headless"` |
+| `InstructionsLoaded` can supply a `manifest` event | unverified: check what its input holds |
+| `PostToolUseFailure` and `PermissionDenied` can supply failures and permission decisions | unverified: check their inputs |
 
 ## Tools to kinds
 
@@ -46,5 +43,5 @@ Documented events useful to wadachi: `SessionStart`, `UserPromptSubmit`,
 ## Known gaps
 
 - Built-in checkpoints rewind edits made through the edit tools; shell writes
-  are outside them. The `tree_before`/`tree_after` hook observation is still
-  needed.
+  are outside them (documented). The `tree_before`/`tree_after` hook
+  observation is still needed.

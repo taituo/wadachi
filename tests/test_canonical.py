@@ -2,7 +2,7 @@ import math
 
 import pytest
 
-from wadachi.canonical import dumps
+from wadachi.canonical import CanonicalError, dumps, ecmascript_number
 
 # Values from RFC 8785, Appendix B, and ECMAScript's Number.prototype.toString.
 NUMBERS = [
@@ -27,8 +27,18 @@ NUMBERS = [
 
 
 @pytest.mark.parametrize("value,expected", NUMBERS)
-def test_numbers(value, expected):
-    assert dumps(value) == expected
+def test_number_form(value, expected):
+    # The ECMAScript form, as RFC 8785 defines it. Numbers beyond 2^53 - 1
+    # are then refused by dumps (SPEC.md section 2), tested below.
+    assert ecmascript_number(value) == expected
+    if abs(value) <= 2**53 - 1:
+        assert dumps(value) == expected
+
+
+@pytest.mark.parametrize("big", [2**53, 1.7e19, 1e21, -9007199254740992.0])
+def test_numbers_beyond_2_53_are_refused(big):
+    with pytest.raises(CanonicalError):
+        dumps(big)
 
 
 def test_key_order_is_utf16():
@@ -41,8 +51,12 @@ def test_string_escapes():
     assert dumps("\b\t\n\f\r\"\\\x01\x1f\x7f\u2028") == '"\\b\\t\\n\\f\\r\\"\\\\\\u0001\\u001f\x7f\u2028"'
 
 
-def test_lone_surrogate_is_escaped():
-    assert dumps("\ud800") == '"\\ud800"'
+def test_lone_surrogates_are_refused():
+    # RFC 8785 section 3.2.2.2 requires an error.
+    with pytest.raises(CanonicalError):
+        dumps("\ud800")
+    with pytest.raises(CanonicalError):
+        dumps({"a\udc00": 1})
 
 
 def test_structure_has_no_whitespace():
@@ -57,7 +71,7 @@ def test_non_finite_numbers_are_rejected(bad):
 
 def test_unsafe_integers_are_rejected():
     assert dumps(2**53 - 1) == "9007199254740991"
-    with pytest.raises(ValueError):
+    with pytest.raises(CanonicalError):
         dumps(2**53)
 
 

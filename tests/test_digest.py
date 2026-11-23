@@ -1,4 +1,4 @@
-from wadachi.digest import digests, parse_time
+from wadachi.digest import digests
 
 
 def ev(i, turn, type_, actor="agent", data=None, t=None, of=None):
@@ -12,7 +12,7 @@ def ev(i, turn, type_, actor="agent", data=None, t=None, of=None):
 
 def call(i, turn, kind, paths=None, t=None):
     data = {"kind": kind}
-    if paths:
+    if paths is not None:
         data["paths"] = paths
     return ev(i, turn, "tool_call", data=data, t=t)
 
@@ -32,8 +32,9 @@ def test_counts_in_fixed_order_and_failures():
         call(5, 1, "read"),
         call(6, 1, "mcp"),
         ev(7, 1, "error", "tool", {"code": "timeout"}, of=6),
+        call(8, 1, "shell"),  # no outcome recorded: not counted as failed
     ]
-    assert only_line(events) == "t1 h5 r1 s2!1 m1!1"
+    assert only_line(events) == "t1 h5 r1 s3!1 m1!1"
 
 
 def test_hook_observation_counts_as_failure():
@@ -52,19 +53,24 @@ def test_caller_prompt_and_missing_text():
 
 
 def test_markers_duration_and_paths():
-    paths = ["a b.rs", "100%.rs", "a b.rs", "c.rs", "d.rs", "e.rs", "f.rs", "g.rs"]
+    paths = ["a b.rs", "100%.rs", "a b.rs", "", "c.rs", "d.rs", "e.rs", "f.rs", "g.rs"]
     events = [
-        ev(0, 1, "prompt", "human", {"text": "do"}, t="2026-01-01T10:00:00+02:00"),
-        call(1, 1, "edit", paths[:3]),
-        call(2, 1, "write", paths[3:]),
+        ev(0, 1, "prompt", "human", {"text": "do"}, t="2026-01-01T08:00:00Z"),
+        call(1, 1, "edit", paths[:4]),
+        call(2, 1, "write", paths[4:]),
         call(3, 1, "read", ["ignored.rs"]),
         ev(4, 1, "steer", "human", {"text": "no"}),
-        ev(5, 1, "steer", "human", {"text": "really"}),
+        ev(5, 1, "steer", "caller", {"text": "really"}),
         ev(6, 1, "interrupt", "human"),
         ev(7, 1, "compaction", "harness", t="2026-01-01T08:04:12.9Z"),
         ev(8, 1, "usage", "harness"),
     ]
-    assert only_line(events) == "t1 h2 r1 w1 e1 ^2 x c 4m12s a%20b.rs 100%25.rs c.rs d.rs e.rs +2"
+    assert only_line(events) == "t1 h2 r1 w1 e1 ^2 x c 4m12s @a%20b.rs @100%25.rs @c.rs @d.rs @e.rs +2"
+
+
+def test_path_tokens_escape_every_whitespace_and_control_character():
+    events = [ev(0, 1, "prompt", "human", {"text": ""}), call(1, 1, "write", ["a\rb", "x", "45s", "c d", "e\x7ff"])]
+    assert only_line(events) == "t1 h0 w1 @a%0Db @x @45s @c%C2%A0d @e%7Ff"
 
 
 def test_duration_forms():
@@ -77,6 +83,14 @@ def test_duration_forms():
     assert line("2025-12-31T23:59:00Z") == "t1 h0"  # clock went backwards
 
 
+def test_duration_is_exact_below_microseconds():
+    events = [
+        ev(0, 1, "prompt", "human", {"text": ""}, t="2026-01-01T00:00:00.0000005Z"),
+        ev(1, 1, "usage", "harness", t="2026-01-01T00:00:01.0000001Z"),
+    ]
+    assert only_line(events) == "t1 h0"  # 0.9999996 s rounds down to nothing
+
+
 def test_turn_zero_has_no_digest_and_turns_are_separate():
     events = [
         ev(0, 0, "manifest", "hook"),
@@ -87,8 +101,3 @@ def test_turn_zero_has_no_digest_and_turns_are_separate():
     ]
     assert [line for _, line in digests(events)] == ["t1 h1 r1", "t2 h2 q1"]
     assert digests(events)[1][0] == "e_0000000000000003"
-
-
-def test_parse_time_handles_offsets_and_long_fractions():
-    assert parse_time("2026-01-01T02:00:00+02:00") == parse_time("2026-01-01T00:00:00Z")
-    assert parse_time("2026-01-01T00:00:00.123456789Z").microsecond == 123456
