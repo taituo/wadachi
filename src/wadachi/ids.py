@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import hashlib
-import unicodedata
+
+from .escape import percent_escape
 
 
 def _h(s: str) -> str:
@@ -32,13 +33,7 @@ def event_id(session: str, src: str) -> str:
 
 def escape_key(key: str) -> str:
     """Write a source's record key for use after `@` in `src` (SPEC.md section 6)."""
-    out = []
-    for ch in key:
-        if ch in "%#" or ch.isspace() or unicodedata.category(ch) == "Cc":
-            out.append("".join(f"%{b:02X}" for b in ch.encode("utf-8")))
-        else:
-            out.append(ch)
-    return "".join(out)
+    return percent_escape(key, also="%#")
 
 
 def split_src(src: str) -> tuple[str, str]:

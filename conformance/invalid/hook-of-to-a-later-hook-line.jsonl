@@ -1,0 +1,4 @@
+{"converter":{"name":"conformance","version":"0.1.0"},"files":{"f1":{"format":"example-jsonl","path":"~/.example/sessions/conf-0005.jsonl","role":"record","sha256":"3559a1d8609a8911d531a14cf91f15b783437b25d820cf81fc94ad755d47b579"},"f2":{"format":"wadachi-hook/0.1","path":"~/.wadachi/hooks/conf-0005.jsonl","role":"hook","sha256":"b7b506fd12c2e5c40ecea1c089ba41d1ce4cc0bd3c3d8991c9460f927190dac2"}},"format":"wadachi/0.1","harness":{"name":"example-harness","version":"1.0.0"},"id":"s_068238cc8f1c0a36","native_id":"conf-0005","type":"session"}
+{"actor":"human","data":{"text":"x"},"id":"e_7f5f8061e1bbec9f","seq":0,"src":"f1:0","turn":1,"type":"prompt"}
+{"actor":"hook","data":{},"id":"e_5614a85955dc9056","of":"e_a5289863e72767ff","seq":1,"src":"f2:0","turn":1,"type":"manifest"}
+{"actor":"hook","data":{},"id":"e_a5289863e72767ff","seq":2,"src":"f2:50","turn":1,"type":"manifest"}

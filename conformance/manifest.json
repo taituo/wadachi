@@ -49,6 +49,9 @@
     "invalid/event-id-not-derived.jsonl": [
       "id"
     ],
+    "invalid/f1-not-the-record.jsonl": [
+      "sources"
+    ],
     "invalid/header-missing.jsonl": [
       "header"
     ],
@@ -61,10 +64,19 @@
     "invalid/hook-files-out-of-key-order.jsonl": [
       "order"
     ],
+    "invalid/hook-of-to-a-later-hook-line.jsonl": [
+      "of-order"
+    ],
     "invalid/how-without-inferred.jsonl": [
       "schema"
     ],
     "invalid/key-not-escaped.jsonl": [
+      "schema"
+    ],
+    "invalid/key-with-astral-format-character.jsonl": [
+      "schema"
+    ],
+    "invalid/key-with-zero-width-no-break-space.jsonl": [
       "schema"
     ],
     "invalid/kind-not-a-defined-value.jsonl": [
@@ -103,6 +115,9 @@
     "invalid/position-with-leading-zero.jsonl": [
       "schema"
     ],
+    "invalid/record-events-out-of-key-order.jsonl": [
+      "order"
+    ],
     "invalid/seq-gap.jsonl": [
       "seq"
     ],
@@ -116,6 +131,9 @@
       "time"
     ],
     "invalid/time-leap-second-not-at-59.jsonl": [
+      "time"
+    ],
+    "invalid/time-leap-second-not-at-midnight-utc.jsonl": [
       "time"
     ],
     "invalid/time-not-utc.jsonl": [
@@ -138,6 +156,9 @@
     ],
     "invalid/unknown-source.jsonl": [
       "unknown-source"
+    ],
+    "invalid/unknown-version-with-annotations": [
+      "version"
     ],
     "invalid/unknown-version.jsonl": [
       "version"

@@ -112,11 +112,16 @@ reads as `wadachi-hook/0.1`:
 - `at` in UTC from the hook's own clock.
 - `tree_before` and `tree_after`: the full tree id from `git add -A && git
   write-tree` against a separate `GIT_DIR` and index, so the agent's own
-  repository is untouched. Never abbreviate it. It covers what git sees in the
-  working tree; ignored files and writes outside the tree are not in it.
-- Those tree ids are also how outcomes are found later: a commit whose tree
-  equals an observation's `tree_after` came from that call, and can be linked
-  as an `observed` `landmark` annotation.
+  repository is untouched. Never abbreviate it. Give it the repository's own
+  ignore rules, including `.git/info/exclude` (for example through
+  `core.excludesFile`), so the snapshot sees what a commit would. It covers
+  what git sees in the working tree; ignored files and writes outside the tree
+  are not in it.
+- Those tree ids are also how outcomes are found later. SPEC.md section 10
+  says exactly when a commit is proven to come from a session (the call
+  changed the tree, the commit's tree and its parent's tree both match trees
+  the session recorded, in the right order). Only then is the link an
+  `observed` landmark; anything less is `synthetic`.
 - Take the exit code and duration from the process, not from the harness.
 - A hook must never print anything the harness would put in the model's
   context. On failure it exits 0 and logs the gap, so the agent keeps working

@@ -71,3 +71,26 @@ def test_cli_does_not_raise(tmp_path, capsys):
     assert main(["id", "session", "h", "--native-id", ""]) == 1
     assert main(["validate", "-q", str(tmp_path / "missing")]) == 1
     capsys.readouterr()
+
+
+def test_deep_nesting_is_reported_not_raised(tmp_path):
+    from wadachi import dumps
+    from wadachi.ids import event_id, session_id
+
+    sid = session_id("h", native_id="deep")
+    header = {"type": "session", "format": "wadachi/0.1", "id": sid, "native_id": "deep", "harness": {"name": "h"},
+              "files": {"f1": {"path": "~/x", "role": "record", "format": "x", "sha256": "0" * 64}},
+              "converter": {"name": "c", "version": "1"}}
+    raw: dict = {}
+    node = raw
+    for _ in range(500):
+        node["a"] = {}
+        node = node["a"]
+    event = {"id": event_id(sid, "f1:0"), "seq": 0, "turn": 0, "type": "assistant_text", "actor": "agent", "src": "f1:0", "data": {}, "raw": raw}
+    f = tmp_path / "deep.jsonl"
+    try:
+        text = dumps(header) + "\n" + dumps(event) + "\n"
+    except RecursionError:
+        pytest.skip("this Python cannot serialise the case itself")
+    f.write_text(text)
+    assert isinstance(validate_path(f), list)

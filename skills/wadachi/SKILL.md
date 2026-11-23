@@ -168,9 +168,13 @@ Outcomes are known later than sessions end: a commit fails CI, a pull request
 is reverted, a bug is found. Link them as `landmark` annotations
 (`{"kind": "commit"|"branch"|"pr"|"ci"|"ticket"|"milestone"|"release"|"revert", "ref": ..., "state": ...}`):
 
-- When a rule can prove the link, it is `observed`: a hook observation's
-  `tree_after` equals a commit's tree (`git rev-parse <commit>^{tree}`), or a
-  revert names a commit already linked to the session.
+- When a rule can prove the link, it is `observed`. For a commit, all of
+  these must hold: an observation in the session changed the tree
+  (`tree_after` differs from `tree_before`); the commit's tree
+  (`git rev-parse <commit>^{tree}`) equals that `tree_after`; the commit's
+  first parent's tree equals a tree recorded earlier in the same session; and
+  the commit was made after that observation. A revert is proven when it names
+  a commit already proven. Equal trees alone prove nothing.
 - When you only suspect it, it is yours: `synthetic`, `on` the events your
   suspicion rests on, with the reasoning in your report, not in the record.
 

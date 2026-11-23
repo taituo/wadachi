@@ -102,8 +102,9 @@ whether its pull request was merged, whether it was reverted a week later,
 whether a human rewrote what the agent wrote.
 
 Wadachi links sessions to these as `landmark` annotations, usually long after
-the session ended. A link a rule can prove (the hook saw exactly the tree that
-was later committed) is `observed`. A model's guess at which session caused a
+the session ended. A link a rule can prove (the hook saw the session change
+the tree from the commit's parent to exactly the committed tree) is
+`observed`. A model's guess at which session caused a
 bug is `synthetic`, points at the events it rests on, and stays a hypothesis
 until someone confirms it. Finding causes afterwards is discovery, not
 judgement.

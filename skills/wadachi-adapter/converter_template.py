@@ -18,6 +18,7 @@ import os
 from pathlib import Path
 
 from wadachi import FORMAT, dumps, event_id, session_id
+from wadachi.canonical import MAX_SAFE_INTEGER, ecmascript_number
 from wadachi.ids import escape_key
 from wadachi.times import from_source
 
@@ -95,6 +96,7 @@ def map_record(offset: int, rec: dict) -> list[dict]:
 
     if role == "assistant":
         specs = []
+        raw.update({k: v for k, v in rec.items() if k not in known | {"text", "calls"}})
         if "text" in rec:
             specs.append({"pos": pos + "#/text", "type": "assistant_text", "actor": "agent", "data": {"text": rec["text"]}, **t})
         for i, call in enumerate(rec.get("calls", [])):
@@ -103,8 +105,8 @@ def map_record(offset: int, rec: dict) -> list[dict]:
             _put(data, "call_id", call, "id")
             _put(data, "args", call, "input")
             paths = call.get("input", {}).get("paths") if isinstance(call.get("input"), dict) else None
-            if isinstance(paths, list):
-                data["paths"] = [str(p) for p in paths]  # the tool's own list, in its order
+            if isinstance(paths, list) and all(isinstance(p, str) for p in paths):
+                data["paths"] = list(paths)  # the tool's own list, in its order; anything else stays in args
             specs.append({"pos": f"{pos}#/calls/{i}", "type": "tool_call", "actor": "agent", "data": data, **t})
         if raw and specs:
             specs[0]["raw"] = raw
@@ -145,6 +147,24 @@ def map_hook(offset: int, rec: dict) -> list[dict]:
 # ---- shared machinery: keep as is -------------------------------------------
 
 
+def _section_2(value: object) -> object:
+    """Apply SPEC.md section 2 to a value from a source: lone surrogates become
+    U+FFFD, and numbers beyond 2^53 - 1 become strings. Nothing else changes."""
+    if isinstance(value, str):
+        return "".join("\ufffd" if 0xD800 <= ord(ch) <= 0xDFFF else ch for ch in value)
+    if isinstance(value, bool) or value is None:
+        return value
+    if isinstance(value, int):
+        return str(value) if abs(value) > MAX_SAFE_INTEGER else value
+    if isinstance(value, float):
+        return ecmascript_number(value) if abs(value) > MAX_SAFE_INTEGER else value
+    if isinstance(value, list):
+        return [_section_2(v) for v in value]
+    if isinstance(value, dict):
+        return {_section_2(k): _section_2(v) for k, v in value.items()}
+    return value
+
+
 def _read_complete(path: Path) -> tuple[bytes, list[tuple[int, dict]]]:
     """Read once, up to the last complete line. Returns the bytes used and the records.
 
@@ -154,10 +174,10 @@ def _read_complete(path: Path) -> tuple[bytes, list[tuple[int, dict]]]:
     data = path.read_bytes()
     data = data[: data.rfind(b"\n") + 1]
     records, offset = [], 0
-    for line in data.splitlines(keepends=True):
+    for line in data.split(b"\n")[:-1]:  # LF only: a bare CR is legal JSON whitespace
         if line.strip():
             records.append((offset, json.loads(line)))
-        offset += len(line)
+        offset += len(line) + 1
     return data, records
 
 
@@ -177,11 +197,12 @@ def convert(record_path: Path, hook_path: Path | None = None) -> list[dict]:
     """Convert one session. Returns the header followed by the events."""
     f1, records = _source(record_path, "record", SOURCE_FORMAT)
     files = {"f1": f1}
+    records = [(offset, _section_2(rec)) for offset, rec in records]
     specs = [dict(s, key="f1") for offset, rec in records for s in map_record(offset, rec)]
     hook_specs = []
-    if hook_path and hook_path.exists():
+    if hook_path and hook_path.exists():  # key f2 is always the hook log, present or not (SPEC.md section 3.3)
         files["f2"], hooks = _source(hook_path, "hook", "wadachi-hook/0.1")
-        hook_specs = [dict(s, key="f2") for offset, rec in hooks for s in map_hook(offset, rec)]
+        hook_specs = [dict(s, key="f2") for offset, rec in hooks for s in map_hook(offset, _section_2(rec))]
 
     nid = native_id(records)
     sid = session_id(HARNESS, native_id=nid) if nid else session_id(HARNESS, path=f1["path"])

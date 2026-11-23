@@ -63,10 +63,11 @@ Two rules keep canonical form exact in every language:
   that finds one in a source (for example text cut in the middle of an emoji)
   replaces it with U+FFFD; the raw file keeps the original.
 - **Numbers fit a double exactly.** JSON numbers are read as IEEE 754 doubles,
-  so any number whose magnitude exceeds 2^53 − 1 MUST be written as a string
-  of its decimal digits, anywhere in the file, `raw` and `x` included. Numeric
-  fields this specification defines hold integers; a source value that is not
-  an integer goes to `raw`.
+  so any number whose magnitude exceeds 2^53 − 1 MUST be written as a string,
+  anywhere in the file, `raw` and `x` included: an integer as its decimal
+  digits, any other number in the form RFC 8785 gives it (`"1.5e+300"`).
+  Numeric fields this specification defines hold integers; a source value that
+  is not an integer goes to `raw`.
 
 ## 3. The header
 
@@ -114,15 +115,20 @@ The first line of a session file is its header, and no other line is a header.
 | `sha256` | hex SHA-256 of the bytes that were converted |
 | `truncated` | `true` if the source is known to cut content short (optional) |
 
-Keys are `f1`, `f2`, … without gaps: `record` sources first, then `hook`, then
-`aux`, in an order the adapter documents and keeps for a given converter
-version. Keys are always compared by their number, so `f2` comes before `f10`.
+Keys are `f1`, `f2`, and so on. `f1` is always the harness's main session
+record, with role `record`. Every other kind of source an adapter reads gets a
+fixed key of its own, which the adapter documents and keeps for a given
+converter version; a source that is absent leaves its key unused. A hook log
+that appears in a later conversion therefore renumbers nothing. Keys are
+compared by their number, so `f2` comes before `f10`.
 
-A live session's file keeps growing. A converter reads up to the last complete
-line (one ending in LF); `sha256` covers exactly those bytes, so it shows later
-whether the conversion is out of date. When a harness keeps both a truncated
-and a complete copy of the same session, events MUST be read from the complete
-copy.
+A live session's file keeps growing. A converter reads a line-based source up
+to its last complete line (one ending in LF), and any other source from a
+consistent snapshot, such as a copy of the file or a single read transaction.
+`sha256` covers exactly the bytes converted, or the snapshot's bytes, so it
+shows later whether the conversion is out of date. When a harness keeps both a
+truncated and a complete copy of the same session, events MUST be read from
+the complete copy.
 
 ## 4. Events
 
@@ -243,13 +249,16 @@ without trailing zeros, left out when it is zero: `2026-11-23T18:02:11.204Z`,
 
 - A source time with a zone offset, a lowercase `t` or `z`, or a space between
   date and time is converted exactly to this form; the raw file keeps the
-  original. Unix times convert exactly.
+  original. A Unix time given as an integer (seconds, milliseconds,
+  microseconds or nanoseconds) converts exactly.
 - A source time without a zone MUST NOT be given one. It is not written as `t`;
-  the original value is kept in `raw`.
-- A leap second (`:60`) is kept as written. In arithmetic, such as a digest's
-  duration, it counts as the second after `:59`.
-- A time that does not exist, such as February 31st, is not a time; it is kept
-  in `raw`.
+  the original value is kept in `raw`. So is a time with more than nine
+  fractional digits, a Unix time given as a non-integer number, and a time that
+  does not exist, such as February 31st, or one outside the years 1 to 9999 in
+  UTC.
+- A leap second exists only as `23:59:60` in UTC, and is kept as written. In
+  arithmetic, such as a digest's duration, it counts as the second after
+  `:59`.
 
 ## 5. Order
 
@@ -259,10 +268,14 @@ Events are ordered deterministically:
 2. Events from `hook` and `aux` sources are then placed one at a time, by file
    key, then in source order. One with `of` goes directly after the last
    already-placed event that is its target or has the same `of`, so a hook's
-   observation of a call follows the call's own results. Its target is a
-   `record` event, or a `hook` or `aux` event placed before it.
-3. Events from `hook` and `aux` sources without `of`, or whose target was not
-   placed, follow at the end, by file key, then in source order.
+   observation of a call follows the call's own results.
+3. Events from `hook` and `aux` sources without `of` follow at the end, by file
+   key, then in source order.
+
+The target of a `hook` or `aux` event's `of` is a `record` event, or a `hook`
+or `aux` event that comes before it in this placing order. A source that refers
+to anything else, such as a later line of the same hook log, gets no `of`; the
+converter keeps the reference in `raw`.
 
 `seq` is assigned after ordering. A hook event about the start of a session,
 such as a `manifest`, uses `of` to point at the session's first record event.
@@ -280,10 +293,17 @@ key      = 1*key-char                ; see below
 pointer  = JSON Pointer (RFC 6901), in its string form, starting with "/"
 ```
 
-In a key, `%`, `#` and every whitespace or control character are written as
-`%` and two uppercase hex digits per UTF-8 byte; all other characters are
-written as they are. The pointer is the plain RFC 6901 string, not the
-percent-encoded URI fragment form.
+In a key, `%`, `#` and every escaped character are written as `%` and two
+uppercase hex digits per UTF-8 byte; all other characters are written as they
+are. The escaped characters are those with Unicode's White_Space property and
+those in the general categories Cc (control), Cf (format, such as U+200B and
+U+FEFF), Zl and Zp, as of Unicode 15.1: 254 code points, listed as ranges in
+`src/wadachi/escape.py`. Digest paths (section 11) use the same list. The JSON
+Schema checks the ones below U+10000, which every regular expression engine
+matches alike; the validator checks all of them.
+
+The pointer is the plain RFC 6901 string, not the percent-encoded URI fragment
+form.
 
 Examples:
 
@@ -314,8 +334,11 @@ the machine. When a harness's own id is unique only within a parent session,
 as some subagent ids are, the adapter writes `native_id` as the parent's native
 id, `/`, and the child's id.
 
-An event id does not depend on where the source file lives, so moving or
-archiving the raw files changes no ids. Event ids are unique within their
+An event id does not depend on where the source file lives. With a native
+id, moving or archiving the raw files changes no ids, and neither does a new
+kind of source appearing, since keys are fixed (section 3.3). Without a native
+id, the session id comes from the path of `f1`, so moving that file changes
+every id: adapters SHOULD find a native id wherever the harness has one. Event ids are unique within their
 session, because `src` is. They are not unique across sessions, so a reference
 to another session's event always carries that session's id, as `parent` does.
 
@@ -389,12 +412,18 @@ commit it made, whether the commit passed CI, whether its pull request was
 merged or later reverted. They are usually discovered afterwards, when the
 outcome is known, and added like any other layer:
 
-- A link a rule can prove is `observed`: a hook observation's `tree_after` is
-  exactly the tree of a later commit, or a revert names a commit already linked
-  to the session.
+- A link a rule can prove is `observed`. A commit is proven to come from a
+  session when all of these hold: an observation in the session changed the
+  tree (`tree_after` differs from `tree_before`); the commit's tree equals that
+  `tree_after`; the commit's first parent's tree equals a `tree_before` or
+  `tree_after` recorded earlier in the same session; and the commit was made
+  after that observation's `t`. A revert is proven when it names a commit
+  already proven this way. Equal trees alone prove nothing: a read-only call
+  leaves the tree at an older commit's, and two sessions can reach the same
+  tree.
 - A link a person makes by hand is `human`.
-- A model's guess at a cause, such as which session most likely introduced a
-  bug, is `synthetic`. It points at the events it rests on, and stays a
+- Anything weaker, and any model's guess at a cause, such as which session
+  most likely introduced a bug, is `synthetic`. It points at the events it rests on, and stays a
   hypothesis until a rule or a person confirms it.
 
 ## 11. Digests
@@ -431,8 +460,8 @@ Tokens, separated by single spaces, in this order:
 8. The paths named by the turn's `write` and `edit` calls, whether or not the
    calls succeeded: in order of first appearance, without repeats or empty
    paths, at most five, each written as `@` and the path; then `+` and the
-   number left out. In a path, `%` and every whitespace or control character
-   are written as `%` and two uppercase hex digits per UTF-8 byte.
+   number left out. In a path, `%` and the escaped characters of section 6 are
+   written as `%` and two uppercase hex digits per UTF-8 byte.
 
 The digest annotation is `on` the turn's `prompt` event, with `by.kind` `rule`,
 `by.ref` `wadachi-digest/1` and origin `observed`. Turn 0 has no digest.
@@ -462,7 +491,8 @@ left out and counted.
 A converter conforms when every file it writes passes every check below.
 `wadachi validate` reports each failure with its code, and `conformance/` holds
 files a validator must accept, and files it must reject with exactly the codes
-its manifest lists.
+its manifest lists. The first two codes are about what the validator was given,
+not about the files themselves.
 
 | Code | Check |
 |---|---|
@@ -476,6 +506,7 @@ its manifest lists.
 | `schema` | every line matches the JSON Schemas in `src/wadachi/schemas/` |
 | `header` | the header is on the first line and only there |
 | `session-id` | the header's id is the one section 7 derives, and a store's file is named after it |
+| `sources` | `f1` is a `record` source (section 3.3) |
 | `seq` | `seq` counts from 0 without gaps |
 | `turn` | `turn` follows section 4.3 |
 | `time` | every time exists (section 4.5) |
@@ -485,7 +516,7 @@ its manifest lists.
 | `duplicate-id` | no two events share an id |
 | `dangling-of` | every `of` names an event in the session |
 | `of-order` | every `of` names an earlier event |
-| `order` | events from `hook` and `aux` sources are where section 5 puts them |
+| `order` | record events come in file key order, and events from `hook` and `aux` sources are where section 5 puts them |
 | `annotation-orphan` | every annotation file belongs to a session in the store |
 | `annotation-layer` | every annotation's layer is its directory's name |
 | `annotation-target` | every annotation's `on` exists in its session |

@@ -22,11 +22,14 @@ def _epoch_ns(y: int, mo: int, d: int, h: int, mi: int, s: int, frac: str, offse
     """Nanoseconds since the epoch; raises ValueError for a time that does not exist."""
     if not 1 <= mo <= 12 or not 1 <= d <= calendar.monthrange(y, mo)[1]:
         raise ValueError("no such date")
-    if h > 23 or mi > 59 or s > 60 or (s == 60 and mi != 59):
+    if h > 23 or mi > 59 or s > 60:
         raise ValueError("no such time of day")
     leap = 1 if s == 60 else 0
-    seconds = calendar.timegm((y, mo, d, h, mi, s - leap, 0, 0, 0)) + leap - offset_s
-    return seconds * _NS + int((frac or "").ljust(9, "0"))
+    seconds = calendar.timegm((y, mo, d, h, mi, s - leap, 0, 0, 0)) - offset_s
+    if leap and seconds % 86400 != 86399:
+        # A leap second exists only as 23:59:60 in UTC (SPEC.md section 4.5).
+        raise ValueError("a leap second is only 23:59:60 UTC")
+    return (seconds + leap) * _NS + int((frac or "").ljust(9, "0"))
 
 
 def instant_ns(value: str) -> int:
@@ -70,12 +73,17 @@ def from_source(value: str) -> str | None:
         offset = (1 if zone[0] == "+" else -1) * (oh * 3600 + om * 60)
     y, mo, d, h, mi, s = (int(m.group(i)) for i in range(1, 7))
     try:
-        ns = _epoch_ns(y, mo, d, h, mi, s, m.group(7), offset)
-    except ValueError:
-        return None
-    return _format(ns, leap=(s == 60))
+        return _format(_epoch_ns(y, mo, d, h, mi, s, m.group(7), offset), leap=(s == 60))
+    except (ValueError, OverflowError, OSError):
+        return None  # no such time, or outside the years 1 to 9999 in UTC
 
 
 def from_unix(seconds: int, nanos: int = 0) -> str:
-    """Convert a Unix time, given as whole seconds and nanoseconds, to wadachi's form."""
+    """Convert a Unix time, given as integer seconds and nanoseconds, to wadachi's form.
+
+    A Unix time a source gives as a non-integer number is not converted: its
+    decimal value is not exact, so it stays in `raw` (SPEC.md section 4.5).
+    """
+    if not isinstance(seconds, int) or not isinstance(nanos, int) or isinstance(seconds, bool):
+        raise TypeError("Unix times convert exactly only from integers")
     return _format(seconds * _NS + nanos, leap=False)

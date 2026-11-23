@@ -81,3 +81,17 @@ def test_refuses_repeated_call_ids(tmp_path, template):
     write_jsonl(record, [{"id": "a", "role": "assistant", "calls": [{"id": "c1", "name": "run"}, {"id": "c1", "name": "run"}]}])
     with pytest.raises(ValueError):
         template.convert(record)
+
+
+def test_applies_section_2_and_keeps_unmapped_fields(tmp_path, template):
+    record = tmp_path / "s.jsonl"
+    record.write_bytes(
+        b'{"id":"r1","role":"user","text":"cut \\ud83d","big":12345678901234567890}\n'
+        b'{"id":"r2","role":"assistant","text":"hi","model":"m1","usage":{"in":3},\r"calls":[{"id":"c1","name":"replace","input":{"paths":[null,5]}}]}\n'
+    )
+    out = template.write_session(template.convert(record), tmp_path / "store")
+    assert [str(p) for p in validate_session(out).problems] == []
+    prompt, text, call = validate_session(out).events
+    assert prompt["data"]["text"] == "cut \ufffd" and prompt["raw"]["big"] == "12345678901234567890"
+    assert text["raw"] == {"model": "m1", "usage": {"in": 3}}
+    assert "paths" not in call["data"] and call["data"]["args"] == {"paths": [None, 5]}

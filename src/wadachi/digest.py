@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import unicodedata
 from collections import Counter
 
+from .escape import percent_escape
 from .times import instant_ns
 
 RULE = "wadachi-digest/1"
@@ -24,13 +24,7 @@ MAX_PATHS = 5
 
 
 def _path_token(path: str) -> str:
-    out = ["@"]
-    for ch in path:
-        if ch == "%" or ch.isspace() or unicodedata.category(ch) == "Cc":
-            out.append("".join(f"%{b:02X}" for b in ch.encode("utf-8")))
-        else:
-            out.append(ch)
-    return "".join(out)
+    return "@" + percent_escape(path)
 
 
 def _duration(seconds: int) -> str:

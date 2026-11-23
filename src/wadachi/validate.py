@@ -17,6 +17,7 @@ from jsonschema import Draft202012Validator
 from . import FORMAT, schemas
 from .canonical import CanonicalError, dumps
 from .digest import digests
+from .escape import needs_escape
 from .ids import event_id, session_id, split_src
 from .times import WADACHI_TIME, instant_ns
 
@@ -31,6 +32,7 @@ CODES = (
     "schema",
     "header",
     "session-id",
+    "sources",
     "seq",
     "turn",
     "time",
@@ -98,12 +100,17 @@ def _reject_constant(name: str) -> None:
 
 
 def _has_lone_surrogate(value: object) -> bool:
-    if isinstance(value, str):
-        return any(0xD800 <= ord(ch) <= 0xDFFF for ch in value)
-    if isinstance(value, dict):
-        return any(_has_lone_surrogate(k) or _has_lone_surrogate(v) for k, v in value.items())
-    if isinstance(value, list):
-        return any(_has_lone_surrogate(v) for v in value)
+    stack = [value]  # iterative: any depth json.loads accepts is fine here
+    while stack:
+        v = stack.pop()
+        if isinstance(v, str):
+            if any(0xD800 <= ord(ch) <= 0xDFFF for ch in v):
+                return True
+        elif isinstance(v, dict):
+            stack.extend(v.keys())
+            stack.extend(v.values())
+        elif isinstance(v, list):
+            stack.extend(v)
     return False
 
 
@@ -210,6 +217,8 @@ def validate_session(path: str | Path) -> Session:
         header_problems = _schema_problems(_HEADER, first, p, first_n)
         s.problems += header_problems + _time_problems(first, ("started_at", "ended_at"), p, first_n)
         header_ok = not header_problems
+        if header_ok and (first["files"].get("f1") or {}).get("role") != "record":
+            s.problems.append(Problem("sources", p, first_n, "f1 must be the harness's main session record (SPEC.md section 3.3)"))
         if header_ok:
             files = first["files"]
             expected = session_id(
@@ -253,7 +262,9 @@ def validate_session(path: str | Path) -> Session:
             if src in seen_src:
                 s.problems.append(Problem("duplicate-src", p, n, f"{src} is already used"))
             seen_src.add(src)
-            key, _ = split_src(src)
+            key, position = split_src(src)
+            if position.startswith("@") and any(needs_escape(ch) for ch in position.split("#", 1)[0]):
+                s.problems.append(Problem("schema", p, n, "src: a key holds a character that must be written as %XX (SPEC.md section 6)"))
             if header_ok and key not in files:
                 s.problems.append(Problem("unknown-source", p, n, f"{key} is not in the header's files"))
             elif header_ok and isinstance(eid, str):
@@ -293,6 +304,10 @@ def _check_order(s: Session, numbered: list[tuple[int, dict]], files: dict) -> N
     if any(role(ev) not in ("record", "hook", "aux") for _, ev in numbered):
         return  # unknown sources are reported elsewhere
     record = [ev for _, ev in numbered if role(ev) == "record"]
+    for (n, ev), (_, nxt) in zip([x for x in numbered if role(x[1]) == "record"], [x for x in numbered if role(x[1]) == "record"][1:]):
+        if _key_number(key_of(nxt)) < _key_number(key_of(ev)):
+            s.problems.append(Problem("order", s.path, n, "events from record sources must come in file key order (SPEC.md section 5)"))
+            return
     # Secondary events by file key; within one file, in the order they appear,
     # which stands in for source order.
     secondary = sorted((ev for _, ev in numbered if role(ev) != "record"), key=lambda ev: _key_number(key_of(ev)))
@@ -352,6 +367,8 @@ def validate_store(root: str | Path) -> list[Problem]:
                 problems.append(Problem("annotation-orphan", p, 0, f"no session {sid} in this store"))
                 continue
             session = sessions[sid]
+            if any(pr.code == "version" for pr in session.problems):
+                continue  # a version this validator does not know: nothing else is checked
             targets = session.ids | {sid}
             computed = None
             for n, ann in read_lines(f, problems):

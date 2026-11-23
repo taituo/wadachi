@@ -50,3 +50,17 @@ def test_instant_is_exact_and_counts_leap_seconds_as_the_next_second():
 def test_instant_refuses_other_forms(bad):
     with pytest.raises(ValueError):
         instant_ns(bad)
+
+
+@pytest.mark.parametrize("source", ["9999-12-31T23:59:59-01:00", "0001-01-01T00:00:00+01:00", "2026-11-23T12:59:60Z"])
+def test_from_source_returns_none_outside_what_exists(source):
+    assert from_source(source) is None
+
+
+def test_leap_second_is_checked_in_utc():
+    assert from_source("2017-01-01T05:29:60+05:30") == "2016-12-31T23:59:60Z"
+
+
+def test_from_unix_needs_integers():
+    with pytest.raises(TypeError):
+        from_unix(1732387200.5)
