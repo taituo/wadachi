@@ -1,0 +1,230 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/taituo/wadachi/schemas/annotation/0.1",
+  "title": "Wadachi 0.1 annotation line",
+  "description": "One line of annotations/<layer>/<session-id>.jsonl. See SPEC.md section 10.",
+  "type": "object",
+  "required": [
+    "on",
+    "layer",
+    "v",
+    "by",
+    "origin"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "on": {
+      "type": "string",
+      "pattern": "^(s|e)_[0-9a-f]{16}$"
+    },
+    "layer": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "v": {},
+    "by": {
+      "type": "object",
+      "required": [
+        "kind",
+        "ref"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "rule",
+            "model",
+            "human"
+          ]
+        },
+        "ref": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "origin": {
+      "enum": [
+        "observed",
+        "human",
+        "synthetic"
+      ]
+    },
+    "at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$",
+      "format": "date-time"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "by": {
+            "properties": {
+              "kind": {
+                "const": "model"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "origin": {
+            "const": "synthetic"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "layer": {
+            "const": "summary"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "origin": {
+            "const": "synthetic"
+          },
+          "v": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "layer": {
+            "const": "digest"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "on": {
+            "pattern": "^e_"
+          },
+          "v": {
+            "type": "string",
+            "pattern": "^t[1-9][0-9]* [hp]([0-9]+|\\?)( [^ ]+)*$"
+          },
+          "by": {
+            "properties": {
+              "kind": {
+                "const": "rule"
+              }
+            }
+          },
+          "origin": {
+            "const": "observed"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "layer": {
+            "const": "irreversibility"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "v": {
+            "enum": [
+              "read",
+              "local",
+              "local-outside",
+              "external"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "layer": {
+            "const": "turn_role"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "v": {
+            "enum": [
+              "intent",
+              "continue",
+              "refine",
+              "interrupt"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "layer": {
+            "const": "noise"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "v": {
+            "const": true
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "layer": {
+            "const": "secrets"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "v": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "pattern": "^(/.*)?$"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "layer": {
+            "const": "dreaming"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "v": {
+            "enum": [
+              "confirmed",
+              "contradicted",
+              "stale",
+              "unverifiable"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

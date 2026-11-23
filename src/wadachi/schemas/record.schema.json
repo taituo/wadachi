@@ -1,0 +1,986 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/taituo/wadachi/schemas/record/0.1",
+  "title": "Wadachi 0.1 session file line",
+  "description": "One line of sessions/<session-id>.jsonl: the header (type 'session') or an event. See SPEC.md sections 3 and 4.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/header"
+    },
+    {
+      "$ref": "#/$defs/event"
+    }
+  ],
+  "$defs": {
+    "sessionId": {
+      "type": "string",
+      "pattern": "^s_[0-9a-f]{16}$"
+    },
+    "eventId": {
+      "type": "string",
+      "pattern": "^e_[0-9a-f]{16}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "treeHash": {
+      "type": "string",
+      "pattern": "^(git-tree|sha256):[0-9a-f]{7,64}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$",
+      "format": "date-time"
+    },
+    "nameVersion": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    "how": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[a-z_]+(\\.[a-z_]+)*$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^inferred:[a-z0-9]+(-[a-z0-9]+)*$"
+      }
+    },
+    "x": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_-]*$"
+      },
+      "additionalProperties": {
+        "type": "object"
+      }
+    },
+    "header": {
+      "type": "object",
+      "required": [
+        "type",
+        "format",
+        "id",
+        "harness",
+        "files",
+        "converter"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "const": "session"
+        },
+        "format": {
+          "const": "wadachi/0.1"
+        },
+        "id": {
+          "$ref": "#/$defs/sessionId"
+        },
+        "harness": {
+          "$ref": "#/$defs/nameVersion"
+        },
+        "files": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "pattern": "^f[1-9][0-9]*$"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "required": [
+              "path",
+              "role",
+              "format",
+              "sha256"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "role": {
+                "enum": [
+                  "record",
+                  "hook",
+                  "aux"
+                ]
+              },
+              "format": {
+                "type": "string",
+                "minLength": 1
+              },
+              "sha256": {
+                "$ref": "#/$defs/sha256"
+              },
+              "truncated": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "converter": {
+          "$ref": "#/$defs/nameVersion"
+        },
+        "native_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "binary": {
+          "type": "string"
+        },
+        "middleware": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/nameVersion"
+          }
+        },
+        "mode": {
+          "enum": [
+            "interactive",
+            "headless",
+            "protocol",
+            "subagent"
+          ]
+        },
+        "parent": {
+          "type": "object",
+          "required": [
+            "session",
+            "relation"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "session": {
+              "$ref": "#/$defs/sessionId"
+            },
+            "event": {
+              "$ref": "#/$defs/eventId"
+            },
+            "relation": {
+              "enum": [
+                "subagent",
+                "fork",
+                "resume",
+                "continuation"
+              ]
+            }
+          }
+        },
+        "invoked_by": {
+          "type": "object",
+          "required": [
+            "kind"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "enum": [
+                "human",
+                "agent",
+                "orchestrator",
+                "schedule",
+                "hook"
+              ]
+            },
+            "ref": {
+              "type": "string"
+            }
+          }
+        },
+        "agent": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "definition": {
+              "type": "string"
+            }
+          }
+        },
+        "model": {
+          "type": "string"
+        },
+        "cwd": {
+          "type": "string"
+        },
+        "repo_commit": {
+          "type": "string"
+        },
+        "started_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "ended_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "end_reason": {
+          "type": "string"
+        },
+        "how": {
+          "$ref": "#/$defs/how"
+        },
+        "x": {
+          "$ref": "#/$defs/x"
+        }
+      }
+    },
+    "event": {
+      "type": "object",
+      "required": [
+        "id",
+        "seq",
+        "turn",
+        "type",
+        "actor",
+        "src",
+        "data"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/eventId"
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "turn": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "type": {
+          "enum": [
+            "prompt",
+            "assistant_text",
+            "reasoning",
+            "tool_call",
+            "tool_result",
+            "steer",
+            "interrupt",
+            "permission",
+            "compaction",
+            "subagent_start",
+            "subagent_end",
+            "setting",
+            "usage",
+            "observation",
+            "manifest",
+            "error",
+            "session_end"
+          ]
+        },
+        "actor": {
+          "enum": [
+            "human",
+            "caller",
+            "agent",
+            "harness",
+            "tool",
+            "hook"
+          ]
+        },
+        "src": {
+          "type": "string",
+          "pattern": "^f[1-9][0-9]*:([0-9]+|@[^#\\s]+)(#/.*)?$"
+        },
+        "data": {
+          "type": "object"
+        },
+        "t": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "of": {
+          "$ref": "#/$defs/eventId"
+        },
+        "how": {
+          "$ref": "#/$defs/how"
+        },
+        "raw": {
+          "type": "object"
+        },
+        "x": {
+          "$ref": "#/$defs/x"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "prompt"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "actor": {
+                "enum": [
+                  "human",
+                  "caller"
+                ]
+              },
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  },
+                  "text_truncated": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "assistant_text"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "actor": {
+                "enum": [
+                  "agent"
+                ]
+              },
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  },
+                  "text_truncated": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "reasoning"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "actor": {
+                "enum": [
+                  "agent"
+                ]
+              },
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  },
+                  "text_truncated": {
+                    "type": "boolean"
+                  },
+                  "redacted": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "tool_call"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "actor": {
+                "enum": [
+                  "agent"
+                ]
+              },
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "tool": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": [
+                      "read",
+                      "write",
+                      "edit",
+                      "shell",
+                      "search",
+                      "fetch",
+                      "subagent",
+                      "mcp",
+                      "other"
+                    ]
+                  },
+                  "call_id": {
+                    "type": "string"
+                  },
+                  "args": {},
+                  "paths": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "kind"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "tool_result"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "actor": {
+                "enum": [
+                  "tool"
+                ]
+              },
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "tool": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": [
+                      "read",
+                      "write",
+                      "edit",
+                      "shell",
+                      "search",
+                      "fetch",
+                      "subagent",
+                      "mcp",
+                      "other"
+                    ]
+                  },
+                  "call_id": {
+                    "type": "string"
+                  },
+                  "exit_code": {
+                    "type": "integer"
+                  },
+                  "status_as_recorded": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  },
+                  "text_truncated": {
+                    "type": "boolean"
+                  },
+                  "paths": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "steer"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "actor": {
+                "enum": [
+                  "human",
+                  "caller"
+                ]
+              },
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "text": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "interrupt"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "actor": {
+                "enum": [
+                  "human",
+                  "caller",
+                  "harness"
+                ]
+              },
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "reason": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "permission"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "actor": {
+                "enum": [
+                  "human",
+                  "caller",
+                  "harness",
+                  "hook"
+                ]
+              },
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "decision": {
+                    "enum": [
+                      "asked",
+                      "allowed",
+                      "denied"
+                    ]
+                  },
+                  "rule": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "compaction"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "actor": {
+                "enum": [
+                  "harness"
+                ]
+              },
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "before_tokens": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "after_tokens": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "subagent_start"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "actor": {
+                "enum": [
+                  "agent",
+                  "harness"
+                ]
+              },
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "session": {
+                    "$ref": "#/$defs/sessionId"
+                  },
+                  "agent": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "subagent_end"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "actor": {
+                "enum": [
+                  "agent",
+                  "harness"
+                ]
+              },
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "session": {
+                    "$ref": "#/$defs/sessionId"
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "setting"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "actor": {
+                "enum": [
+                  "harness"
+                ]
+              },
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "model": {
+                    "type": "string"
+                  },
+                  "cwd": {
+                    "type": "string"
+                  },
+                  "effort": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "usage"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "actor": {
+                "enum": [
+                  "harness"
+                ]
+              },
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "input_tokens": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "output_tokens": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "cache_read_tokens": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "cache_write_tokens": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "observation"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "actor": {
+                "enum": [
+                  "hook"
+                ]
+              },
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "tree_before": {
+                    "$ref": "#/$defs/treeHash"
+                  },
+                  "tree_after": {
+                    "$ref": "#/$defs/treeHash"
+                  },
+                  "exit_code": {
+                    "type": "integer"
+                  },
+                  "duration_ms": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "cwd": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "manifest"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "actor": {
+                "enum": [
+                  "hook",
+                  "harness"
+                ]
+              },
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "sha256": {
+                    "$ref": "#/$defs/sha256"
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "context_tokens": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "window_tokens": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "error"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "actor": {
+                "enum": [
+                  "harness",
+                  "tool"
+                ]
+              },
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "session_end"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "actor": {
+                "enum": [
+                  "harness"
+                ]
+              },
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "reason": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

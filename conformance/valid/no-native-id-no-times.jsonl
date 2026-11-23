@@ -1,0 +1,5 @@
+{"converter":{"name":"conformance","version":"0.1.0"},"files":{"f1":{"format":"example-log","path":"~/.example/sessions/untitled.log","role":"record","sha256":"fab66aa01347d3f11a16468941378cea495937e5f482e18ea6472681e03d3936","truncated":true}},"format":"wadachi/0.1","harness":{"name":"example-harness"},"id":"s_470d1b914d02e08b","type":"session"}
+{"actor":"agent","data":{"text":"Ready."},"id":"e_b8e3e76df5a0e570","seq":0,"src":"f1:0","turn":0,"type":"assistant_text"}
+{"actor":"human","data":{"text_truncated":true},"id":"e_c776d353ef84880d","seq":1,"src":"f1:40","turn":1,"type":"prompt"}
+{"actor":"agent","data":{"redacted":true},"id":"e_2c6d19c505838f66","seq":2,"src":"f1:95","turn":1,"type":"reasoning"}
+{"actor":"agent","data":{"kind":"other"},"id":"e_7462d4815bc36e7b","raw":{"name":null},"seq":3,"src":"f1:130","turn":1,"type":"tool_call"}

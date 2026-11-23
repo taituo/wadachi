@@ -1,0 +1,1 @@
+{"at":"2026-11-23T21:40:00Z","by":{"kind":"model","ref":"claude-haiku-5-5"},"layer":"summary","on":"s_e6468e8dce041668","origin":"synthetic","v":"Fixed the parser keeping only the first path; the trace view fix was interrupted before the full test run."}

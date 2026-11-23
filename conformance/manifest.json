@@ -1,0 +1,102 @@
+{
+  "invalid": {
+    "invalid/annotation-layer-mismatch": [
+      "annotation-layer"
+    ],
+    "invalid/annotation-model-not-synthetic": [
+      "schema"
+    ],
+    "invalid/annotation-orphan": [
+      "annotation-orphan"
+    ],
+    "invalid/annotation-target-missing": [
+      "annotation-target"
+    ],
+    "invalid/blank-line.jsonl": [
+      "encoding"
+    ],
+    "invalid/byte-order-mark.jsonl": [
+      "encoding"
+    ],
+    "invalid/crlf-line-endings.jsonl": [
+      "encoding"
+    ],
+    "invalid/dangling-of.jsonl": [
+      "dangling-of"
+    ],
+    "invalid/digest-not-by-rule": [
+      "schema"
+    ],
+    "invalid/duplicate-id.jsonl": [
+      "duplicate-id"
+    ],
+    "invalid/event-id-not-derived.jsonl": [
+      "id"
+    ],
+    "invalid/header-missing.jsonl": [
+      "header",
+      "unknown-source"
+    ],
+    "invalid/header-twice.jsonl": [
+      "header"
+    ],
+    "invalid/hook-event-misplaced.jsonl": [
+      "order"
+    ],
+    "invalid/how-without-inferred.jsonl": [
+      "schema"
+    ],
+    "invalid/kind-not-a-defined-value.jsonl": [
+      "schema"
+    ],
+    "invalid/no-final-newline.jsonl": [
+      "encoding"
+    ],
+    "invalid/non-integer-in-defined-field.jsonl": [
+      "schema"
+    ],
+    "invalid/not-canonical.jsonl": [
+      "canonical"
+    ],
+    "invalid/not-json.jsonl": [
+      "json"
+    ],
+    "invalid/observation-not-from-hook.jsonl": [
+      "schema"
+    ],
+    "invalid/of-order.jsonl": [
+      "of-order"
+    ],
+    "invalid/seq-gap.jsonl": [
+      "seq"
+    ],
+    "invalid/session-file-misnamed": [
+      "session-id"
+    ],
+    "invalid/session-id-not-derived.jsonl": [
+      "session-id"
+    ],
+    "invalid/timestamp-without-zone.jsonl": [
+      "schema"
+    ],
+    "invalid/tool-call-without-kind.jsonl": [
+      "schema"
+    ],
+    "invalid/turn-wrong.jsonl": [
+      "turn"
+    ],
+    "invalid/undefined-data-field.jsonl": [
+      "schema"
+    ],
+    "invalid/unknown-source.jsonl": [
+      "unknown-source"
+    ]
+  },
+  "valid": [
+    "valid/base.jsonl",
+    "valid/minimal.jsonl",
+    "valid/no-native-id-no-times.jsonl",
+    "valid/database-keys.jsonl",
+    "valid/store"
+  ]
+}

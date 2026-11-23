@@ -1,0 +1,2 @@
+{"converter":{"name":"conformance","version":"0.1.0"},"files":{"f1":{"format":"example-jsonl","path":"~/.example/sessions/conf-0001.jsonl","role":"record","sha256":"3f524cdc07a11d7c6220bdb049fe8dd41b27483c96cc59b581e022d547290d69"}},"format":"wadachi/0.1","harness":{"name":"example-harness","version":"1.0.0"},"id":"s_b965d4a56521de56","native_id":"conf-0001","type":"session"}
+{"actor":"human","data":{"text":"run the tests"},"id":"e_820092e1b53c0646","seq":0,"src":"f1:0","t":"2026-11-23T18:00:00+02:00","turn":1,"type":"prompt"}
