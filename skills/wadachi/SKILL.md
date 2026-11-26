@@ -46,7 +46,7 @@ Compressed sessions (`.jsonl.zst`) read the same way through `zstdcat`:
 
 | Field | Meaning |
 |---|---|
-| `type` | `prompt`, `assistant_text`, `reasoning`, `tool_call`, `tool_result`, `steer`, `interrupt`, `permission`, `compaction`, `subagent_start`, `subagent_end`, `setting`, `usage`, `observation`, `manifest`, `error`, `session_end` |
+| `type` | `prompt`, `assistant_text`, `reasoning`, `tool_call`, `tool_result`, `steer`, `interrupt`, `permission`, `compaction`, `context`, `subagent_start`, `subagent_end`, `setting`, `usage`, `observation`, `manifest`, `error`, `session_end`, `record` (a source record kept whole that no other type fits; its fields are in `raw`) |
 | `actor` | `human`, `caller` (a program or agent driving the session), `agent`, `harness`, `tool`, `hook` |
 | `turn` | counts the prompts so far; 0 before the first |
 | `of` | the earlier event this one answers or observes; a result's `of` is its call |
@@ -111,6 +111,12 @@ grep -l 'parse_read' sessions/*.jsonl
   `text` of a `compaction` are what a model said. "Tests pass" in an
   assistant's text means nothing until a `tool_result` with `exit_code` 0
   after the last change backs it.
+- **A result is not always its source.** A `tool_result` or `subagent_end`
+  with `text_origin` `model` or `agent` holds what a model or another agent
+  said about the source (a fetched page summarised by a second model, a
+  subagent's report). The source itself was never in the session. Quote it as
+  that model's account, and follow `parent` links to the child's record for
+  the step before.
 - **Inferred is not recorded.** A value listed in `how` was guessed by an
   adapter's rule. Say so when you use it.
 - **Missing is missing.** No `t` means the time was not recorded. Do not

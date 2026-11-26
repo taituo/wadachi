@@ -134,7 +134,27 @@
           }
         },
         "converter": {
-          "$ref": "#/$defs/nameVersion"
+          "type": "object",
+          "required": [
+            "name"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "version": {
+              "type": "string"
+            },
+            "measured": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
         },
         "native_id": {
           "type": "string",
@@ -241,6 +261,30 @@
         },
         "raw": {
           "type": "object"
+        },
+        "unread": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "path",
+              "sha256"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "sha256": {
+                "$ref": "#/$defs/sha256"
+              },
+              "size": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
         }
       }
     },
@@ -279,6 +323,7 @@
             "interrupt",
             "permission",
             "compaction",
+            "context",
             "subagent_start",
             "subagent_end",
             "setting",
@@ -286,7 +331,8 @@
             "observation",
             "manifest",
             "error",
-            "session_end"
+            "session_end",
+            "record"
           ]
         },
         "actor": {
@@ -541,6 +587,13 @@
                     "items": {
                       "type": "string"
                     }
+                  },
+                  "text_origin": {
+                    "enum": [
+                      "tool",
+                      "model",
+                      "agent"
+                    ]
                   }
                 }
               }
@@ -692,6 +745,45 @@
           "if": {
             "properties": {
               "type": {
+                "const": "context"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "actor": {
+                "enum": [
+                  "harness"
+                ]
+              },
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "role": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  },
+                  "text_truncated": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
                 "const": "subagent_start"
               }
             },
@@ -750,6 +842,17 @@
                   },
                   "reason": {
                     "type": "string"
+                  },
+                  "text_origin": {
+                    "enum": [
+                      "agent"
+                    ]
+                  },
+                  "text": {
+                    "type": "string"
+                  },
+                  "text_truncated": {
+                    "type": "boolean"
                   }
                 }
               }
@@ -980,6 +1083,41 @@
                     "type": "string"
                   }
                 }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "record"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              "actor": {
+                "enum": [
+                  "human",
+                  "caller",
+                  "agent",
+                  "harness",
+                  "tool",
+                  "hook"
+                ]
               }
             }
           }

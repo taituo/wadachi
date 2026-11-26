@@ -12,7 +12,8 @@ from . import base
 
 HARNESS = "codex"
 SOURCE_FORMAT = "codex-rollout-jsonl"
-CONVERTER = {"name": "wadachi-codex", "version": "0.1.2"}
+CONVERTER = {"name": "wadachi-codex", "version": "0.3.1",
+             "measured": ["0.154.0", "0.157.1", "0.160.1", "0.162.1", "0.163.0", "0.164.0", "0.167.1"]}
 # The outer exec tool runs JavaScript, not a shell. Inner commands have their
 # own CommandExecution records. Do not classify JavaScript by its contents.
 KINDS = {"exec": "other", "wait": "other", "sleep": "other", "request_user_input_async": "other",
@@ -101,7 +102,9 @@ class _Session:
 
     def __init__(self, records):
         self.records = records
-        self.meta = next((r.get("payload", {}) for _, r in records if r.get("type") == "session_meta"), {})
+        first = next(((o, r) for o, r in records if r.get("type") == "session_meta"), (None, {}))
+        self.meta_offset, self.meta_record = first
+        self.meta = self.meta_record.get("payload", {}) if isinstance(self.meta_record.get("payload"), dict) else {}
         source = self.meta.get("source")
         driven = source == "exec" or isinstance(source, dict) and "subagent" in source
         self.actor = "caller" if driven else "human"
@@ -122,7 +125,6 @@ class _Session:
         self.prompted = set()
         self.active_turn = None
         self.serial = 0
-        self.skipped = Counter()
 
     def _event(self, offset, rec, typ, actor, data=None, suffix="", payload=None, **fields):
         raw = {k: v for k, v in rec.items() if k not in ("timestamp", "payload", "type")}
@@ -144,6 +146,9 @@ class _Session:
         if isinstance(git, dict) and isinstance(git.get("commit_hash"), str):
             header["repo_commit"] = git["commit_hash"]
         raw = {"session_meta": m}
+        outer = {k: v for k, v in self.meta_record.items() if k not in ("payload", "type")}
+        if outer:
+            raw["session_meta_record"] = outer  # the record's own fields beside its payload
         time = base.source_time(m.get("timestamp"), raw, "timestamp")
         if time:
             header["started_at"] = time["t"]
@@ -162,18 +167,18 @@ class _Session:
             header["mode"] = "subagent"
             header["parent"] = {"session": session_id(HARNESS, native_id=spawn["parent_thread_id"]), "relation": "subagent"}
         header["raw"] = raw
-        # Count records with no mapped event, without putting them on a neighbour.
-        probe = _Session(self.records)
-        for offset, rec in self.records:
-            if not probe.map_record(offset, rec) and rec.get("type") != "session_meta":
-                p = rec.get("payload", {})
-                label = rec.get("type", "unknown")
-                if label in ("event_msg", "response_item"):
-                    label += "/" + str(p.get("type", "unknown"))
-                probe.skipped[label] += 1
-        if probe.skipped:
-            header["x"] = {HARNESS: {"skipped_records": dict(probe.skipped)}}
         return header
+
+    def unmapped(self, offset, rec):
+        """A record no other event fits, kept whole (SPEC.md principle 2)."""
+        p = rec.get("payload") if isinstance(rec.get("payload"), dict) else {}
+        name = str(rec.get("type", "unknown"))
+        if name in ("event_msg", "response_item"):
+            name += "/" + str(p.get("type", "unknown"))
+            if p.get("type") == "item_completed" and isinstance(p.get("item"), dict):
+                name += "/" + str(p["item"].get("type", "unknown"))
+        return {"pos": self.positions.get(offset, _position(offset, rec)), "type": "record", "actor": "harness",
+                "data": {"name": name}, "raw": dict(rec), **base.source_time(rec.get("timestamp"), {}, "timestamp")}
 
     def _prompt(self, offset, rec, p, text, turn, goal=False):
         # task_started precedes even the first prompt. Active alone is not steer.
@@ -198,7 +203,9 @@ class _Session:
             return []
         pt = p.get("type")
         if typ == "session_meta":
-            return []
+            if offset == self.meta_offset:
+                return None  # kept whole in the header's raw (session_meta and session_meta_record)
+            return []  # a later metadata record (resume, fork): a record event, kept whole
         if typ in ("turn_context", "world_state") or (typ == "event_msg" and pt == "thread_settings_applied") or (typ == "response_item" and pt in ("configuration_update", "additional_tools")):
             settings = p.get("state", {}) if typ == "world_state" else p.get("thread_settings", {}) if pt == "thread_settings_applied" else p
             data = {k: settings[k] for k in ("model", "cwd", "effort") if isinstance(settings.get(k), str)}
@@ -242,20 +249,24 @@ class _Session:
         if pt == "message":
             role = p.get("role")
             content = p.get("content", [])
+            kinds = p.get("internal_chat_message_metadata_passthrough", {}).get("content_item_kinds")
             if role == "user":
-                kinds = p.get("internal_chat_message_metadata_passthrough", {}).get("content_item_kinds")
                 user_input = isinstance(kinds, list) and any(k in ("user.text", "user.image") for k in kinds)
                 goal = isinstance(kinds, list) and "goal.internal_context" in kinds and not user_input
+                # Blocks of other kinds (environment, instructions) are context the harness added.
+                context = self._context(offset, rec, role, content, kinds,
+                                        lambda k: k not in ("user.text", "user.image", "goal.internal_context"))
                 if isinstance(kinds, list) and not user_input and not goal:
-                    return []
+                    return context
                 text_kind = "goal.internal_context" if goal else "user.text"
                 texts = [b["text"] for i, b in enumerate(content)
                          if isinstance(b, dict) and isinstance(b.get("text"), str)
                          and (not isinstance(kinds, list) or i < len(kinds) and kinds[i] == text_kind)]
                 turn = p.get("internal_chat_message_metadata_passthrough", {}).get("turn_id")
-                return self._prompt(offset, rec, p, texts[0] if len(texts) == 1 else None, turn, goal=goal)
+                return context + self._prompt(offset, rec, p, texts[0] if len(texts) == 1 else None, turn, goal=goal)
             if role != "assistant":
-                return []
+                # Developer and system messages: instructions the harness sends the model.
+                return self._context(offset, rec, role, content, kinds, lambda k: True)
             return [self._event(offset, rec, "assistant_text", "agent", {"text": b["text"]}, f"#/payload/content/{i}")
                     for i, b in enumerate(content) if isinstance(b, dict) and isinstance(b.get("text"), str)]
         if pt == "reasoning":
@@ -295,6 +306,25 @@ class _Session:
                 event["of_src"] = "f1:" + self.calls[p["call_id"]]
             return [event]
         return []
+
+    def _context(self, offset, rec, role, content, kinds, wanted):
+        """One context event per content block whose recorded kind is wanted."""
+        if not isinstance(content, list) or (role == "user" and not isinstance(kinds, list)):
+            return []
+        events = []
+        for i, b in enumerate(content):
+            kind = kinds[i] if isinstance(kinds, list) and i < len(kinds) and isinstance(kinds[i], str) else None
+            if not isinstance(b, dict) or (role == "user" and (kind is None or not wanted(kind))):
+                continue
+            data = {}
+            if kind is not None:
+                data["name"] = kind
+            if isinstance(role, str):
+                data["role"] = role
+            if isinstance(b.get("text"), str):
+                data["text"] = b["text"]
+            events.append(self._event(offset, rec, "context", "harness", data, f"#/payload/content/{i}"))
+        return events
 
     def _item(self, offset, rec, p):
         item = p.get("item", {})

@@ -12,7 +12,13 @@ wadachi repository; read sections 1 to 7 before you start. Next to this file is
 `converter_template.py`, a working converter for a toy format: copy it, and
 fill in only the marked parts.
 
-The one rule that matters most: **never invent.** A converter that fills a gap
+Two rules matter most. **Never leave out:** every record you read becomes at
+least one event; one that fits no type is a `record` event, kept whole (the
+shared base does this when `map_record` returns nothing; return `None` only for
+a metadata record the header keeps whole). Files of the session you do not
+read go in `SessionInput.unread`, so the header lists them with hashes. Put
+the harness versions you checked in `CONVERTER["measured"]`. And **never
+invent.** A converter that fills a gap
 with a plausible value is worse than one that leaves the gap, because the gap
 is visible and the invention is not.
 
@@ -70,6 +76,16 @@ section 4.2). Things that are easy to get wrong:
   a guess: record them only with `how: {"data.paths": "inferred:<rule>"}`.
 - **Compaction.** The summary a harness writes is model text; it goes in
   `compaction.text` and nowhere else.
+- **Who wrote a result.** Some tools return a model's answer about the
+  source, not the source (a fetch tool that summarises a page), and some
+  subagents report back through a separate message. Set `text_origin` from a
+  fixed per-tool table: `tool`, `model` or `agent`. Leave it out when unsure.
+  A child's hand-back report is a `subagent_end` with `text`.
+- **What the model was given.** System prompts, instructions files,
+  environment blocks, tool and skill listings and reminders the harness adds
+  are `context` events (SPEC.md 4.6), one per recorded piece, with the
+  harness's own `name` and `role`. Use the text the harness recorded giving
+  the model; never render a structured record into text yourself.
 - **Usage and cost.** Token counts go in `usage` events; harness-specific cost
   units go under `x.<harness>`, as strings if they are not integers.
 

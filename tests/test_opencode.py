@@ -138,7 +138,12 @@ def test_all_measured_part_types_and_compaction_summary(db, tmp_path):
     assert any(e["type"] == "reasoning" and e["data"]["text"] == "Invented reasoning." for e in events)
     assert [e["data"]["text"] for e in events if e["type"] == "assistant_text"] == ["Invented answer."]
     assert any(e["type"] == "compaction" and e["data"].get("text") == "Invented model summary." for e in events)
-    assert lines[0]["x"]["opencode"]["skipped_parts"] == {"step-start": 1, "patch": 1}
+    # Nothing is left out: parts without another event type are record events.
+    kept = [e for e in events if e["type"] == "record"]
+    names = [e["data"]["name"] for e in kept]
+    assert sorted(n for n in names if n.startswith("part/")) == ["part/patch", "part/step-start"]
+    assert set(names) == {"part/patch", "part/step-start", "message"}  # assistant message metadata rows
+    assert any(e["raw"]["row"]["id"] == "prt_constructed_patch" for e in kept)
     usage = [e for e in events if e["type"] == "usage" and e["data"].get("input_tokens") == 13]
     assert len(usage) == 2
     assert all(e["x"]["opencode"]["cost"] == "0.0125" for e in usage)

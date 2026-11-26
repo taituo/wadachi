@@ -2,7 +2,8 @@
 
 Adapters supply the Converter protocol. Positions passed to map_record are
 byte offsets for JSONL, or escaped @keys for keyed sources. Event specs have
-pos, type, actor and data, plus optional t, raw, how, x and of_call. An of_src
+pos, type, actor and data, plus optional t, raw, how, x, of_call and of_raw
+(the raw field that already holds an of_call or of_src reference). An of_src
 reference names another event's src; of may name its derived event id.
 """
 
@@ -142,6 +143,10 @@ class SessionInput:
     native_id: str | None = None
     header: dict = field(default_factory=dict)
     hook_key: str = "f2"
+    # Files of the session that are not read: listed with hashes (SPEC.md 3.3).
+    unread: Sequence[Path] = ()
+    # Bytes of the unread files, read once by dump so hashes and kept copies agree.
+    unread_data: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -205,6 +210,28 @@ def sessions(converter: Converter, paths: Sequence[Path]) -> Iterable[SessionInp
             yield SessionInput([Source("f1", path, "record", converter.SOURCE_FORMAT)])
 
 
+def unread_entries(paths: Sequence[Path], data_by_path: dict | None = None) -> list[dict]:
+    """Path, hash and size of files that belong to a session but are not read."""
+    entries = []
+    for path in paths:
+        data = (data_by_path or {}).get(path)
+        if data is None:
+            data = path.read_bytes()
+        entries.append({"path": display_path(path), "sha256": hashlib.sha256(data).hexdigest(), "size": len(data)})
+    return sorted(entries, key=lambda e: e["path"])
+
+
+def unmapped(converter, source: Source, position: Position, rec: dict) -> dict:
+    """A record no other event fits: kept whole (SPEC.md principle 2)."""
+    if hasattr(converter, "unmapped"):
+        return converter.unmapped(position, rec)
+    spec = {"pos": str(position), "type": "record", "actor": "hook" if source.role == "hook" else "harness",
+            "data": {}, "raw": rec}
+    if isinstance(rec.get("type"), str):
+        spec["data"]["name"] = rec["type"]
+    return spec
+
+
 def _file_number(source: Source) -> int:
     if not re.fullmatch(r"f[1-9][0-9]*", source.key):
         raise ValueError(f"invalid file key: {source.key!r}")
@@ -245,6 +272,9 @@ def convert(converter: Converter, session: SessionInput | Path, hook_path: Path 
     # It sees only records from this same snapshot, never a second live read.
     if hasattr(converter, "prepare"):
         converter = converter.prepare(records)
+    if hasattr(converter, "attach_aux"):
+        # Aux sources read for context, from the same snapshots that were hashed.
+        converter.attach_aux({source.key: rows for source, rows in loaded if source.role == "aux"})
     metadata = converter.session_header() if hasattr(converter, "session_header") else {}
     for name, value in session.header.items():
         if name in ("x", "raw", "how") and isinstance(metadata.get(name), dict) and isinstance(value, dict):
@@ -255,6 +285,8 @@ def convert(converter: Converter, session: SessionInput | Path, hook_path: Path 
     sid = session_id(converter.HARNESS, native_id=nid, path=files["f1"]["path"])
     header = {"type": "session", "format": FORMAT, "id": sid, "harness": {"name": converter.HARNESS},
               "files": files, "converter": converter.CONVERTER}
+    if session.unread:
+        header["unread"] = unread_entries(session.unread, session.unread_data)
     if nid:
         header["native_id"] = nid
     if (header.keys() - {"harness"}) & metadata.keys():
@@ -267,11 +299,19 @@ def convert(converter: Converter, session: SessionInput | Path, hook_path: Path 
     for source, rows in loaded:
         if not source.events:
             continue
-        mapper = converter.map_record if source.role != "hook" else getattr(converter, "map_hook", map_hook)
+        if source.role == "hook":
+            mapper = getattr(converter, "map_hook", map_hook)
+        elif source.role == "aux" and hasattr(converter, "map_aux"):
+            mapper = lambda pos, rec, key=source.key: converter.map_aux(key, pos, rec)
+        else:
+            mapper = converter.map_record
         for pos, rec in rows:
             if source.role == "hook" and "session" in rec and rec["session"] != nid:
                 continue
-            for mapped in mapper(pos, rec):
+            mapped_specs = mapper(pos, rec)
+            if mapped_specs is None:
+                continue  # the adapter keeps this record whole in the header's raw
+            for mapped in mapped_specs or [unmapped(converter, source, pos, rec)]:
                 s = section_2(dict(mapped))
                 s["src"] = f"{source.key}:{s.pop('pos')}"
                 s["id"] = event_id(sid, s["src"])
@@ -295,7 +335,9 @@ def convert(converter: Converter, session: SessionInput | Path, hook_path: Path 
                 target = table.get(ref)
                 if target in earlier:
                     s["of"] = target
-                else:
+                elif s.get("raw", {}).get(s.get("of_raw")) != ref:
+                    # Keep an unresolved reference, unless the adapter named the raw field
+                    # that already holds it (of_raw).
                     s.setdefault("raw", {})[name] = ref
         if "of" in s and s["of"] not in earlier:
             s.setdefault("raw", {})["of"] = s.pop("of")
@@ -319,6 +361,7 @@ def convert(converter: Converter, session: SessionInput | Path, hook_path: Path 
     events, turn = [], 0
     for seq, s in enumerate(ordered):
         turn += s["type"] == "prompt"
+        s.pop("of_raw", None)
         e = {k: s[k] for k in ("id", "type", "actor", "src", "data", "t", "of", "raw", "how", "x") if k in s}
         events.append(e | {"seq": seq, "turn": turn})
     return section_2([header] + events)

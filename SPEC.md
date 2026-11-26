@@ -17,22 +17,29 @@ described in RFC 2119 and RFC 8174 when they appear in capitals.
    harness's own session files. It can be thrown away and rebuilt from them at
    any time, and a rebuild with the same converter version gives the same
    bytes.
-2. **Never invent.** A value the source did not record is left out. A
+2. **Never leave out.** Every record of every source the converter reads
+   becomes at least one event: a record no other type fits is a `record`
+   event that keeps it whole (section 4.2). The one exception is a session's
+   own metadata record, which the header keeps whole in `raw`. Files of the
+   session that are not read are listed with their hashes (section 3.3). A
+   reader can always tell what was there, even what no converter understands
+   yet.
+3. **Never invent.** A value the source did not record is left out. A
    timestamp is never copied from a neighbouring event, a missing time zone is
    never guessed, and a path is never completed.
-3. **One event, one source.** Every event points to the one source it was read
+4. **One event, one source.** Every event points to the one source it was read
    from. Facts about the same thing from different sources, such as the
    harness's record and a hook's log, are separate events linked with `of`.
-4. **Read unless said otherwise.** Every value is read from its source, or
+5. **Read unless said otherwise.** Every value is read from its source, or
    derived by a rule this specification defines. Anything else, such as a
    value an adapter infers, is marked in `how`.
-5. **Content is never normalised.** Text, paths, commands and arguments stay as
+6. **Content is never normalised.** Text, paths, commands and arguments stay as
    recorded, character for character, with one exception (section 2: invalid
    Unicode). Only enumerated values (`type`, `actor`, `kind`, `mode` and the
    like) are fixed lowercase words, and times have one form (section 4.5).
-6. **Annotations never touch the base.** Interpretation, classification and
+7. **Annotations never touch the base.** Interpretation, classification and
    summaries live in separate annotation layers that point at events.
-7. **Boring on purpose.** A small required core, a fixed set of optional fields
+8. **Boring on purpose.** A small required core, a fixed set of optional fields
    with agreed names, and a namespace for everything else.
 
 ## 2. Files
@@ -82,7 +89,7 @@ The first line of a session file is its header, and no other line is a header.
 | `id` | the session id (section 7) |
 | `harness` | `{"name": "…", "version": "…"}`; `version` is left out if not recorded |
 | `files` | the sources this record was read from (section 3.3) |
-| `converter` | `{"name": "…", "version": "…"}` |
+| `converter` | `{"name": "…", "version": "…", "measured": […]}`; `measured`, optional, lists the harness versions this converter version was checked against real files of (section 3.4) |
 
 ### 3.2 Optional fields
 
@@ -100,6 +107,7 @@ The first line of a session file is its header, and no other line is a header.
 | `started_at`, `ended_at` | times, in the form of section 4.5 |
 | `end_reason` | as recorded |
 | `how` | see section 8 |
+| `unread` | files that belong to the session but were not read, each `{"path", "sha256", "size"}` (section 3.3) |
 | `raw` | session-level source fields the converter did not map, such as a start time without a zone |
 | `x` | extensions, see section 9 |
 
@@ -129,6 +137,24 @@ consistent snapshot, such as a copy of the file or a single read transaction.
 shows later whether the conversion is out of date. When a harness keeps both a
 truncated and a complete copy of the same session, events MUST be read from
 the complete copy.
+
+Some files of a session are not read as sources: a byte-identical copy, or a
+collection with one file per step whose count changes, such as a tool's full
+output kept beside the record. They are not left out silently. The header's
+`unread` lists each with `path` (written as in `files`), the `sha256` of its
+bytes and its `size`, in path order (by Unicode code point, as `files` paths are written). A store that keeps raw files (section 13)
+keeps these too.
+
+### 3.4 Versions of the harness
+
+Harnesses change their files without notice, so a converter is pinned to what
+it has seen. `converter.measured` lists the harness versions the converter
+version was checked against. A session whose `harness.version` is not in that
+list is still converted, and since nothing is left out (principle 2) any new
+record shape becomes a `record` event; tools SHOULD report such sessions, so
+the converter is checked against the new version before its output is relied
+on. A session whose harness records no version cannot be checked this way;
+tools SHOULD report it apart from the unmeasured ones.
 
 ## 4. Events
 
@@ -166,19 +192,21 @@ Optional:
 | `assistant_text` | agent | `text`, `text_truncated` |
 | `reasoning` | agent | `text`, `text_truncated`, `redacted` (the harness kept only an opaque or summarised form) |
 | `tool_call` | agent | `tool`, `kind`, `call_id`, `args`, `paths` |
-| `tool_result` | tool | `tool`, `kind`, `call_id`, `exit_code`, `status_as_recorded`, `text`, `text_truncated`, `paths` |
+| `tool_result` | tool | `tool`, `kind`, `call_id`, `exit_code`, `status_as_recorded`, `text`, `text_truncated`, `text_origin`, `paths` |
 | `steer` | human, caller | `text`: a message sent while the agent was working |
 | `interrupt` | human, caller, harness | `reason` |
 | `permission` | human, caller, harness, hook | `decision` (`asked`, `allowed`, `denied`), `rule` |
 | `compaction` | harness | `before_tokens`, `after_tokens`, `text` (the summary the harness wrote) |
+| `context` | harness | `name`, `role`, `text`, `text_truncated`: content the harness itself put into the model's input (section 4.6) |
 | `subagent_start` | agent, harness | `session` (the child's session id), `agent` |
-| `subagent_end` | agent, harness | `session`, `reason` |
+| `subagent_end` | agent, harness | `session`, `reason`, `text` (the report the child handed back, as the parent received it), `text_truncated`, `text_origin` |
 | `setting` | harness | `model`, `cwd`, `effort`: a change during the session |
 | `usage` | harness | `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_write_tokens` |
 | `observation` | hook | `tree_before`, `tree_after`, `exit_code`, `duration_ms`, `cwd` |
 | `manifest` | hook, harness | `sha256`, `path`, `context_tokens`, `window_tokens`: what the model was given at the start |
 | `error` | harness, tool | `code`, `text` |
 | `session_end` | harness | `reason` |
+| `record` | human, caller, agent, harness, tool, hook | `name` (the record's own type, as recorded): a source record no other type fits, such as harness bookkeeping or a shape the converter does not know, kept whole in the event's raw field |
 
 Notes:
 
@@ -194,6 +222,22 @@ Notes:
   a shell call as successful when it exited with 1; both values are kept, and
   `exit_code` decides.
 - `compaction.text` is written by a model, so it is a claim, not a fact.
+- A `record` event does not start a turn and is not counted in digests. A
+  converter emits one for every record it reads and maps to no other event;
+  it never skips a record.
+- `text_origin` says who wrote a result's `text`: `tool` when it is the
+  tool's own output (a command's output, a file's bytes, a page as fetched),
+  `model` when a model inside the tool wrote it from the source (a fetch tool
+  that has a small model answer a question about the page), and `agent` when
+  it is another agent's report. Text from `model` or `agent` is a claim about
+  the source, not the source: the source itself was never in the session.
+  `text_origin` is set from the adapter's fixed tool table, like `kind`, and is
+  left out when the adapter does not know. A `subagent_end` with `text` is
+  always `agent`.
+- A child agent's report can reach the parent through more than one model:
+  the child reads a page through a tool whose `text_origin` is `model`, then
+  writes its own report. The parent's record holds only the last link. The
+  child's session record, linked by `parent`, holds the one before it.
 - A `tool_call` and its `tool_result` share a `call_id` when the source records
   one, and the result's `of` points at the call.
 - In `observation`, `tree_before` and `tree_after` are full git tree ids,
@@ -259,6 +303,32 @@ without trailing zeros, left out when it is zero: `2026-11-23T18:02:11.204Z`,
 - A leap second exists only as `23:59:60` in UTC, and is kept as written. In
   arithmetic, such as a digest's duration, it counts as the second after
   `:59`.
+
+### 4.6 Context
+
+A model answers from what is in its input, and much of that input is neither
+the human's nor the model's: a system prompt, instructions files, the
+environment, tool and skill listings, reminders, the output of a local
+command. A `context` event records one such piece, as the harness recorded it.
+It is what lets a reader see what the model was given, not only what was said.
+
+- `name` is the harness's own name for the piece, as recorded (an attachment
+  type, a content kind). It is left out when the harness gives none.
+- `role` is the role the piece had in the model's input, as recorded, such as
+  `system`, `developer` or `user`. It is left out when not recorded.
+- `text` is the text exactly as the harness recorded giving it to the model.
+  A piece recorded only in a structured form keeps that form in `raw`, without
+  `text`; a converter never renders one itself.
+- A piece recorded in several parts, such as a system prompt kept as a list of
+  sections, is one event per part, each with its own pointer.
+- `context` events do not start turns and are not counted in digests.
+- `manifest` and `context` differ: a `manifest` describes the input at the
+  start by its hash and size, `context` holds its pieces.
+
+Context can hold what the person never typed and would not expect to find in
+a record, such as an account's e-mail address, and it is often large. It is
+part of the base like any other event; views given to a model or exported
+apply the `secrets` layer (section 13).
 
 ## 5. Order
 
@@ -507,6 +577,7 @@ not about the files themselves.
 | `header` | the header is on the first line and only there |
 | `session-id` | the header's id is the one section 7 derives, and a store's file is named after it |
 | `sources` | `f1` is a `record` source (section 3.3) |
+| `unread` | the header's `unread` is in path order, without repeats (section 3.3) |
 | `seq` | `seq` counts from 0 without gaps |
 | `turn` | `turn` follows section 4.3 |
 | `time` | every time exists (section 4.5) |

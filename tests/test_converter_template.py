@@ -45,7 +45,8 @@ def test_converts_the_toy_format(tmp_path, template):
     assert [str(p) for p in validate_store(tmp_path / "store")] == []
     events = validate_session(out).events
     assert [e["type"] for e in events] == [
-        "prompt", "assistant_text", "tool_call", "tool_call", "tool_result", "observation", "tool_result", "prompt"]
+        "prompt", "assistant_text", "tool_call", "tool_call", "tool_result", "observation", "tool_result", "prompt",
+        "record"]  # the pre_tool hook line: nothing is left out, and it has no of, so it goes last
     assert events[0]["t"] == "2026-11-23T10:00:00Z"
     assert events[5]["t"] == "2026-11-23T10:00:05.5Z"
     assert events[6]["data"]["status_as_recorded"] == "true"

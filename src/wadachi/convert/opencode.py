@@ -16,7 +16,9 @@ from . import base
 
 HARNESS = "opencode"
 SOURCE_FORMAT = "opencode-session-sqlite/1"
-CONVERTER = {"name": "wadachi-opencode", "version": "0.1.4"}
+CONVERTER = {"name": "wadachi-opencode", "version": "0.2.0",
+             # Session versions in the 145-session corpus PR #3 was audited on.
+             "measured": ["1.18.30", "1.18.31", "1.18.32", "1.18.33", "1.18.35", "1.19.4", "1.19.6"]}
 SELF_FROM_HERDR = True
 KINDS = {"read": "read", "write": "write", "edit": "edit", "apply_patch": "edit", "bash": "shell",
          "glob": "search", "grep": "search", "webfetch": "fetch", "websearch": "fetch", "task": "subagent",
@@ -278,13 +280,16 @@ class _Session:
             header["parent"] = {"session": session_id(HARNESS, native_id=s["parent_id"]), "relation": "subagent"}
             header["how"] = {"mode": "inferred:task-child", "parent.relation": "inferred:task-child"}
             header["raw"]["parent_task"] = self.parent_task["row"]
-        skipped = Counter()
-        for pos, rec in self.records:
-            if rec["table"] == "part" and rec["phase"] == "part" and not self.map_record(pos, rec):
-                skipped[rec["data"].get("type", "unknown")] += 1
-        if skipped:
-            header["x"] = {HARNESS: {"skipped_parts": dict(skipped)}}
         return header
+
+    def unmapped(self, pos, rec):
+        """A row no other event fits, kept whole (SPEC.md principle 2)."""
+        name = rec["table"]
+        if isinstance(rec.get("data"), dict) and isinstance(rec["data"].get("type"), str):
+            name += "/" + rec["data"]["type"]
+        event = self._event(pos, rec, "record", "harness", {"name": name})
+        event["raw"] = {k: v for k, v in rec.items() if k != "time"} | event.get("raw", {})
+        return event
 
     def _event(self, pos, rec, typ, actor, data=None, pointer="", **fields):
         event = {"pos": pos + pointer, "type": typ, "actor": actor, "data": data or {},
@@ -316,8 +321,10 @@ class _Session:
 
     def map_record(self, pos, rec):
         table, phase, d = rec["table"], rec["phase"], rec["data"]
-        if table == "session" or phase == "context":
-            return []
+        if table == "session" and phase != "context":
+            return None  # kept whole in the header's raw.session
+        if phase == "context":
+            return None  # another session's row, read only to link this one; that session keeps it
         if table == "message":
             if phase == "metadata":
                 if d.get("role") != "user":

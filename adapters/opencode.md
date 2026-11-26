@@ -113,7 +113,7 @@ project rows are copied solely to preserve foreign keys.
 | Tool task metadata.sessionId | subagent_start with derived child session id; no borrowed child-start timestamp | measured (OpenCode 1.19.6) |
 | step-finish | usage from its own tokens and cost; reason and snapshot stay in raw | measured (OpenCode 1.19.6) |
 | compaction | compaction marker; auto and tail_start_id stay in raw | measured (OpenCode 1.19.6) |
-| step-start and patch | counted in skipped_parts; no invented git-tree observation or neighbouring event attachment | measured (OpenCode 1.19.6) |
+| step-start and patch | `record` event named `part/<type>`, kept whole; no invented git-tree observation or neighbouring event attachment | measured (OpenCode 1.19.6) |
 
 All emitted events keep their complete original row. JSON numbers outside the
 safe range and lone surrogates receive only the shared section-2 cleanup.

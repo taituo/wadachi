@@ -28,7 +28,9 @@ def convert_rows(tmp_path, monkeypatch):
         out = base.write_session(lines, tmp_path / "store")
         assert validate_session(out).problems == []
         assert lines == base.convert(codex, inp)
-        return lines
+        # Unmapped records are kept as record events; these tests look at the rest.
+        convert.records = [l for l in lines[1:] if l["type"] == "record"]
+        return [l for l in lines if l.get("type") != "record"]
 
     return convert
 
@@ -68,7 +70,9 @@ def test_constructed_goal_continuation_matches_expected_output(tmp_path):
     # Only the machine-dependent provenance path differs in the golden output.
     lines[0]["files"]["f1"]["path"] = "/home/user/constructed-goal-continuation.jsonl"
     assert "".join(dumps(r) + "\n" for r in lines) == (root / "goal-continuation.expected.jsonl").read_text()
-    events = lines[1:]
+    assert [e["data"]["name"] for e in lines[1:] if e["type"] == "record"] == [
+        "event_msg/task_started", "event_msg/item_completed/UserMessage", "event_msg/task_complete"]
+    events = [e for e in lines[1:] if e["type"] != "record"]
     assert [(e["type"], e["actor"]) for e in events] == [
         ("prompt", "caller"), ("reasoning", "agent"), ("tool_call", "agent"),
         ("usage", "harness"), ("tool_result", "tool"), ("steer", "human"),
@@ -178,7 +182,7 @@ def test_prompts_steers_and_queued_new_turns(convert_rows):
     ])
     assert [e["type"] for e in lines[1:]] == ["prompt", "steer", "prompt"]
     assert [e["turn"] for e in lines[1:]] == [1, 1, 2]
-    assert lines[0]["x"]["codex"]["skipped_records"]["event_msg/task_complete"] == 1
+    assert [e["data"]["name"] for e in convert_rows.records] == ["event_msg/task_started", "event_msg/task_complete"]
     assert "ended_at" not in lines[0]
 
 
@@ -198,7 +202,8 @@ def test_duplicate_response_user_and_context_are_not_extra_prompts(convert_rows)
                  internal_chat_message_metadata_passthrough={"content_item_kinds": ["environments.environment_context"]}),
         user(),
     ])
-    assert len(lines) == 2 and lines[1]["type"] == "prompt"
+    assert [e["type"] for e in lines[1:]] == ["prompt", "context"]
+    assert lines[2]["data"] == {"name": "environments.environment_context", "role": "user", "text": "Invented environment."}
 
 
 def test_live_response_input_does_not_wait_for_a_ui_copy(convert_rows):
@@ -219,7 +224,18 @@ def test_user_text_is_selected_without_joining_instruction_blocks(convert_rows):
         {"type": "input_text", "text": "Invented environment."}, {"type": "input_text", "text": "Invented user prompt."}],
         internal_chat_message_metadata_passthrough={"turn_id": "constructed-turn",
                                                    "content_item_kinds": ["environments.environment_context", "user.text"]})])
-    assert lines[1]["data"] == {"text": "Invented user prompt."}
+    assert [e["type"] for e in lines[1:]] == ["context", "prompt"]
+    assert lines[1]["data"]["name"] == "environments.environment_context" and lines[1]["src"].endswith("#/payload/content/0")
+    assert lines[2]["data"] == {"text": "Invented user prompt."}
+
+
+def test_developer_instructions_are_context(convert_rows):
+    lines = convert_rows([response("message", "constructed-dev", role="developer", content=[
+        {"type": "input_text", "text": "Invented instructions."}, {"type": "input_text", "text": "Invented skills."}])])
+    assert [(e["type"], e["actor"], e["data"]) for e in lines[1:]] == [
+        ("context", "harness", {"role": "developer", "text": "Invented instructions."}),
+        ("context", "harness", {"role": "developer", "text": "Invented skills."})]
+    assert "skipped_records" not in lines[0].get("x", {}).get("codex", {})
 
 
 def test_old_response_prompt_and_headless_actor(convert_rows):
@@ -361,8 +377,10 @@ def test_interrupt_not_session_end_and_unknown_types_counted(convert_rows):
                           row("event_msg", {"type": "thread_goal_updated", "goal": {"objective": "Invented goal."}}),
                           row("constructed_future_record", {"value": "Invented value."})])
     assert len(lines) == 2 and lines[1]["type"] == "interrupt"
-    skipped = lines[0]["x"]["codex"]["skipped_records"]
-    assert skipped == {"ghost_snapshot": 1, "event_msg/thread_goal_updated": 1, "constructed_future_record": 1}
+    # Nothing is left out: every unknown record is a record event, kept whole.
+    kept = convert_rows.records
+    assert [e["data"]["name"] for e in kept] == ["ghost_snapshot", "event_msg/thread_goal_updated", "constructed_future_record"]
+    assert kept[2]["raw"]["payload"] == {"value": "Invented value."} and kept[2]["turn"] == 0
 
 
 def test_times_are_per_record_and_invalid_unicode_is_cleaned(convert_rows):
@@ -413,3 +431,11 @@ def test_self_id_environment_precedence(monkeypatch):
     assert codex.self_id() == "constructed-thread"
     monkeypatch.delenv("CODEX_THREAD_ID")
     assert codex.self_id() == "constructed-process"
+
+
+def test_a_later_session_meta_is_kept(convert_rows):
+    """Review finding: a second metadata record (resume, fork) must not disappear."""
+    lines = convert_rows([row("session_meta", {"id": "constructed-other", "cli_version": "9.8.8"}, ordinal=2)])
+    assert [e["data"]["name"] for e in convert_rows.records] == ["session_meta"]
+    assert convert_rows.records[0]["raw"]["payload"]["id"] == "constructed-other"
+    assert lines[0]["native_id"] == "constructed-thread"

@@ -27,6 +27,9 @@
     "invalid/byte-order-mark.jsonl": [
       "encoding"
     ],
+    "invalid/context-not-from-harness.jsonl": [
+      "schema"
+    ],
     "invalid/crlf-line-endings.jsonl": [
       "encoding"
     ],
@@ -88,6 +91,9 @@
     "invalid/lone-surrogate.jsonl": [
       "encoding"
     ],
+    "invalid/measured-not-a-list.jsonl": [
+      "schema"
+    ],
     "invalid/no-final-newline.jsonl": [
       "encoding"
     ],
@@ -115,6 +121,9 @@
     "invalid/position-with-leading-zero.jsonl": [
       "schema"
     ],
+    "invalid/record-actor-not-defined.jsonl": [
+      "schema"
+    ],
     "invalid/record-events-out-of-key-order.jsonl": [
       "order"
     ],
@@ -126,6 +135,12 @@
     ],
     "invalid/session-id-not-derived.jsonl": [
       "session-id"
+    ],
+    "invalid/subagent-end-not-from-agent.jsonl": [
+      "schema"
+    ],
+    "invalid/text-origin-not-a-defined-value.jsonl": [
+      "schema"
     ],
     "invalid/time-does-not-exist.jsonl": [
       "time"
@@ -162,14 +177,19 @@
     ],
     "invalid/unknown-version.jsonl": [
       "version"
+    ],
+    "invalid/unread-out-of-order.jsonl": [
+      "unread"
     ]
   },
   "valid": [
     "valid/base.jsonl",
-    "valid/minimal.jsonl",
-    "valid/no-native-id-no-times.jsonl",
     "valid/database-keys.jsonl",
     "valid/late-result-and-two-hook-files.jsonl",
-    "valid/store"
+    "valid/minimal.jsonl",
+    "valid/no-native-id-no-times.jsonl",
+    "valid/store",
+    "valid/subagent-report.jsonl",
+    "valid/unread-and-record.jsonl"
   ]
 }

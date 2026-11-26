@@ -44,7 +44,7 @@ kept, side by side.
 Each turn also gets a digest: one line, computed, never written by a model.
 
 ```
-t1 h67 r1 e1 s1!1 q1 a1 ^1 2m9s @/home/tuomas/work/ksess/src/parse.rs
+t1 h67 r1 e1 s1!1 q1 a1 ^1 2m9s @/home/user/work/ksess/src/parse.rs
 ```
 
 Turn 1: a human prompt of 67 characters, one read, one edit, one shell call
@@ -64,6 +64,7 @@ agent worked, two minutes nine seconds, and the one path its edit named.
 | [`skills/wadachi/`](skills/wadachi/SKILL.md) | skill for agents that read, search, cite and annotate records |
 | [`skills/wadachi-adapter/`](skills/wadachi-adapter/SKILL.md) | skill and converter template for supporting a new harness |
 | [`adapters/`](adapters/) | what is known about each harness's records and hooks, and how sure it is |
+| [`docs/containers.md`](docs/containers.md) | keeping transcripts from sandboxes and containers, custom homes, pinned versions |
 
 ## Use
 
@@ -73,6 +74,8 @@ pip install git+https://github.com/taituo/wadachi
 wadachi validate examples/store
 wadachi digest examples/store/sessions/s_e6468e8dce041668.jsonl
 
+wadachi convert claude-code --list
+wadachi dump --harness claude-code
 wadachi convert codex --list
 wadachi dump --harness codex
 wadachi convert opencode --list
@@ -91,6 +94,6 @@ skills describe also works with `jq` and `grep`.
 ## Status
 
 Version 0.1, a draft. The format, schemas, tools and conformance suite are
-consistent with each other and tested. Codex and OpenCode converters are
-available. The notes in `adapters/` say for each harness what has been checked
+consistent with each other and tested. Antigravity, Claude Code, Codex,
+Grok and OpenCode converters are available. The notes in `adapters/` say for each harness what has been checked
 against real files and what has not.

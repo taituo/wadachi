@@ -33,6 +33,7 @@ CODES = (
     "header",
     "session-id",
     "sources",
+    "unread",
     "seq",
     "turn",
     "time",
@@ -219,6 +220,10 @@ def validate_session(path: str | Path) -> Session:
         header_ok = not header_problems
         if header_ok and (first["files"].get("f1") or {}).get("role") != "record":
             s.problems.append(Problem("sources", p, first_n, "f1 must be the harness's main session record (SPEC.md section 3.3)"))
+        if header_ok and "unread" in first:
+            paths = [u["path"] for u in first["unread"]]
+            if paths != sorted(set(paths)):
+                s.problems.append(Problem("unread", p, first_n, "unread must be in path order, without repeats (SPEC.md section 3.3)"))
         if header_ok:
             files = first["files"]
             expected = session_id(
