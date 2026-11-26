@@ -48,7 +48,10 @@ Every event keeps the record's other fields in `raw` (the message without its
 `content`, `toolUseResult`, `origin` and so on). Content that `text` does not
 hold exactly (several text blocks, images, extra keys on a block) stays in
 `raw.content` or `raw.block`, and a content block of a type no row maps is a
-`record` event named `content-block`, kept whole. Nothing is left out: a record
+`record` event named `content-block`, kept whole. The record's own fields are kept once, on
+its first event; fields an event's data copies verbatim (a rendered role, an
+attachment type, a report's text, token counts, an error code) are not
+repeated in `raw`. Nothing is left out: a record
 no row below maps is a `record` event named by its type (`attachment/<type>`,
 `system/<subtype>`), kept whole. The converter header lists
 `measured: ["2.1.296"]`.
@@ -61,7 +64,7 @@ no row below maps is a `record` event named by its type (`attachment/<type>`,
 | subagent `sessionId` | header `parent` (relation `subagent`) and `invoked_by` (`agent`); `meta.json` `agentType` is `agent.name`, its other fields go to `raw.subagent_meta` | measured (2.1.296) |
 | `user`, string content, `origin.kind` `human` | `prompt`, actor human | measured (2.1.296) |
 | `user`, string content, other `origin.kind` | `prompt`, actor caller | not measured |
-| `user`, string content, no `origin` | `prompt`; actor human with `how: inferred:interactive-entrypoint` when `entrypoint` is `cli`, caller with `inferred:non-interactive-entrypoint` otherwise, caller with `inferred:subagent-task` in a subagent | measured (2.1.296) |
+| `user`, string content, no `origin` (including slash commands such as `/login`, typed by the human and recorded as `<command-name>`) | `prompt`; actor human with `how: inferred:interactive-entrypoint` when `entrypoint` is `cli`, caller with `inferred:non-interactive-entrypoint` otherwise, caller with `inferred:subagent-task` in a subagent | measured (2.1.296) |
 | `user` with `isMeta: true` | `context`, role `user`: harness text the model was given (caveats, reminders) | measured (2.1.296) |
 | `user` text starting `<local-command-stdout>`, `<local-command-stderr>` or `<local-command-caveat>` | `context`, role `user`: written by the harness, not a prompt | measured (2.1.296) for stdout and caveat |
 | `user` text that is exactly an interrupt marker | `interrupt`, actor human, `how: inferred:interrupt-marker` | reported |
@@ -75,7 +78,7 @@ no row below maps is a `record` event named by its type (`attachment/<type>`,
 | `assistant`, `tool_use` block | `tool_call`: `tool`, `kind`, `call_id`, `args` as recorded, `paths` per the table below | measured (2.1.296) |
 | `assistant`, last line of a `message.id` | `usage` from `message.usage` | measured (2.1.296) |
 | `assistant` with `isApiErrorMessage: true` | `error`, actor harness, `code` from `error`, `text` from the message | measured (2.1.296) |
-| `attachment` `model` | `setting` with `model`, and its rendered text as `context` | measured (2.1.296) |
+| `attachment` `model` | its rendered text as `context`; a `setting` only when the model differs from the one before (the header has the first) | measured (2.1.296) |
 | `attachment` with `rendered` (all other types except `queued_command`) | `context`, one per rendered block: `name` the attachment type, `role` from `renderedRole`, `text` the block's `content`; the attachment's structured fields in `raw` once | measured (2.1.296) |
 | `attachment` `prompt_snapshot` | `context`, one per `systemPrompt` section, role `system`; the rest of the snapshot (tool list, rendering settings) in `raw` of the first | measured (2.1.296) |
 | `attachment` `queued_command`, `origin.kind` `peer` and `handback` | `subagent_end`, actor agent: `text` is the delivered `prompt`, `text_origin: agent`, `session` the child's id, `of` the `Agent` call whose result recorded the same `agentId` (`how: inferred:agent-id-matches-tool-result`) | measured (2.1.296) |

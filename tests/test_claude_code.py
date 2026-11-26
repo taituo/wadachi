@@ -45,7 +45,7 @@ def test_parent_events():
     assert header["native_id"] == PARENT_NID and header["mode"] == "interactive"
     assert header["model"] == "constructed-model-1"
     assert [(e["type"], e["actor"]) for e in events] == [
-        ("setting", "harness"), *[("context", "harness")] * 5, ("prompt", "human"), ("reasoning", "agent"), ("tool_call", "agent"),
+        *[("context", "harness")] * 5, ("prompt", "human"), ("reasoning", "agent"), ("tool_call", "agent"),
         ("usage", "harness"), ("permission", "harness"), ("tool_result", "tool"), ("subagent_end", "agent"),
         ("assistant_text", "agent"), ("usage", "harness"),
         ("prompt", "human"), ("context", "harness"), ("context", "harness"),
@@ -179,9 +179,10 @@ def test_context_is_what_the_model_was_given():
         (None, "user", "<local-command-caveat>Invented caveat</local-command-caveat>")]
     # The rest of a record is kept once, not on every section.
     assert "systemPrompt" not in context[3]["raw"]["attachment"] and "attachment" not in context[4].get("raw", {})
-    assert "rendered" not in context[1]["raw"] and context[1]["raw"]["attachment"]["type"] == "date"
-    # The setting from the model attachment keeps the record; its context part does not repeat it.
-    assert "raw" not in context[0] or set(context[0]["raw"]) <= {"timestamp"}
+    assert "rendered" not in context[1]["raw"] and context[1]["raw"]["attachment"] == {"date": "2031-01-02"}
+    # The first model is the header's, so its attachment is context only; mapped fields are not repeated.
+    assert not [e for e in events if e["type"] == "setting"]
+    assert "renderedRole" not in context[0]["raw"] and "type" not in context[0]["raw"]["attachment"]
     # Context starts no turn and is not in digests.
     assert all(e["turn"] == 0 for e in context[:5])
     assert [d for _, d in digests(events)][0].startswith("t1 h20 a1")

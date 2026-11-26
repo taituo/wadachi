@@ -15,7 +15,7 @@ from . import base
 HARNESS = "claude-code"
 SOURCE_FORMAT = "claude-code-jsonl"
 META_FORMAT = "claude-code-subagent-meta-json"
-CONVERTER = {"name": "wadachi-claude-code", "version": "0.3.1", "measured": ["2.1.296"]}
+CONVERTER = {"name": "wadachi-claude-code", "version": "0.4.0", "measured": ["2.1.296"]}
 SELF_FROM_HERDR = True
 META_KEY = "f3"  # f2 stays reserved for a hook log
 
@@ -182,6 +182,67 @@ def _block_extra(block, mapped):
     return {"block": extra} if extra else None
 
 
+def _once(events):
+    """The record's own fields once (on its first event), and mapped fields not repeated."""
+    if not events:
+        return events
+    shared = dict(events[0].get("raw", {}))
+    for e in events[1:]:
+        raw = {k: v for k, v in e.get("raw", {}).items() if k not in shared or shared[k] != v}
+        if raw:
+            e["raw"] = raw
+        else:
+            e.pop("raw", None)
+    datas = [e["data"] for e in events]
+    for e in events:
+        raw = e.get("raw")
+        if not raw:
+            continue
+        if any(d.get("role") == raw.get("renderedRole") for d in datas if "role" in d):
+            raw.pop("renderedRole", None)
+        message = raw.get("message")
+        if isinstance(message, dict):
+            message = dict(message)
+            if any(d.get("role") == message.get("role") for d in datas if "role" in d):
+                message.pop("role", None)
+            if any(ev["type"] == "usage" for ev in events) and isinstance(message.get("usage"), dict):
+                rest = {k: v for k, v in message["usage"].items() if k not in USAGE}
+                if rest:
+                    message["usage"] = rest
+                else:
+                    message.pop("usage")
+            if message:
+                raw["message"] = message
+            else:
+                raw.pop("message")
+        attachment = raw.get("attachment")
+        if isinstance(attachment, dict):
+            attachment = dict(attachment)
+            if any(d.get("name") == attachment.get("type") for d in datas if "name" in d):
+                attachment.pop("type", None)
+            if any(d.get("text") == attachment.get("prompt") for d in datas if "text" in d):
+                attachment.pop("prompt", None)
+            if attachment:
+                raw["attachment"] = attachment
+            else:
+                raw.pop("attachment")
+        decision = raw.get("permissionDecision")
+        if isinstance(decision, dict) and any(ev["type"] == "permission" for ev in events):
+            # decision stays: it is mapped by rule (accept -> allowed), not copied.
+            rest = {k: v for k, v in decision.items() if k != "reasonType"}
+            if rest:
+                raw["permissionDecision"] = rest
+            else:
+                raw.pop("permissionDecision")
+        if any(d.get("code") == raw.get("error") for d in datas if "code" in d):
+            raw.pop("error", None)
+        if e["type"] in ("prompt", "steer") and e["actor"] == "human" and raw.get("origin") == {"kind": "human"}:
+            raw.pop("origin")
+        if not raw:
+            e.pop("raw")
+    return events
+
+
 def _integer(data, name, value):
     if isinstance(value, int) and not isinstance(value, bool):
         data[name] = value
@@ -225,7 +286,8 @@ class _Session:
                     continue
                 if b.get("type") == "tool_use" and isinstance(b.get("id"), str):
                     self.tools[b["id"]] = b.get("name")
-                if b.get("type") == "tool_result" and isinstance(r.get("toolUseResult"), dict):
+                results = [x for x in content if isinstance(x, dict) and x.get("type") == "tool_result"]
+                if b.get("type") == "tool_result" and len(results) == 1 and isinstance(r.get("toolUseResult"), dict):
                     agent = r["toolUseResult"].get("agentId")
                     if isinstance(agent, str) and isinstance(b.get("tool_use_id"), str):
                         self.agent_calls[agent] = b["tool_use_id"]
@@ -236,6 +298,16 @@ class _Session:
                     first[name] = r[name]
         self.first = first
         self.child = "agentId" in first
+        # A model attachment is a setting only when the model changes; the header has the first.
+        self.model_changes, last = set(), None
+        for o, r in records:
+            a = r.get("attachment")
+            if r.get("type") == "attachment" and isinstance(a, dict) and a.get("type") == "model":
+                model = (a.get("identity") or {}).get("modelId") if isinstance(a.get("identity"), dict) else None
+                if isinstance(model, str):
+                    if last is not None and model != last:
+                        self.model_changes.add(o)
+                    last = model
 
     def _event(self, offset, rec, typ, actor, data=None, pointer="", raw_extra=None, **fields):
         raw = {k: v for k, v in rec.items() if k not in ("type", "timestamp", "uuid", "message")}
@@ -266,7 +338,9 @@ class _Session:
                 break
         if not isinstance(model, str):
             model = next((r["message"]["model"] for _, r in self.records if r.get("type") == "assistant"
-                          and isinstance(r.get("message"), dict) and isinstance(r["message"].get("model"), str)), None)
+                          and r.get("isApiErrorMessage") is not True and isinstance(r.get("message"), dict)
+                          and isinstance(r["message"].get("model"), str)
+                          and r["message"]["model"] != "<synthetic>"), None)
         if isinstance(model, str):
             header["model"] = model
         if self.child:
@@ -446,8 +520,8 @@ class _Session:
                     else:
                         data["redacted"] = True
                     mapped = ("type", "thinking") if isinstance(b.get("thinking"), str) else ("type",)
-                    extra = {"block": {k: v for k, v in b.items() if k not in mapped}}
-                    events.append(self._event(offset, rec, "reasoning", "agent", data, ptr, raw_extra=extra))
+                    events.append(self._event(offset, rec, "reasoning", "agent", data, ptr,
+                                              raw_extra=_block_extra(b, mapped)))
                 elif bt == "redacted_thinking":
                     events.append(self._event(offset, rec, "reasoning", "agent", {"redacted": True}, ptr,
                                               raw_extra={"block": b}))
@@ -532,9 +606,12 @@ class _Session:
         if typ == "prompt_snapshot":
             return self._snapshot(offset, rec, a)
         if typ == "model":
-            model = (a.get("identity") or {}).get("modelId")
-            setting = self._event(offset, rec, "setting", "harness", {"model": model} if isinstance(model, str) else {})
-            return [setting] + self._rendered(offset, rec, typ, first_raw=False)
+            identity = a.get("identity") if isinstance(a.get("identity"), dict) else {}
+            model = identity.get("modelId")
+            events = self._rendered(offset, rec, typ)
+            if offset in self.model_changes:
+                events.insert(0, self._event(offset, rec, "setting", "harness", {"model": model}))
+            return events
         if typ != "queued_command":
             return self._rendered(offset, rec, typ)
         origin = a.get("origin") if isinstance(a.get("origin"), dict) else {}
@@ -560,6 +637,9 @@ class _Session:
         return []
 
     def map_record(self, offset, rec):
+        return _once(self._map(offset, rec))
+
+    def _map(self, offset, rec):
         typ = rec.get("type")
         m = rec.get("message")
         if typ == "user" and isinstance(m, dict):
