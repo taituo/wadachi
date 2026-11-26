@@ -142,6 +142,8 @@ class SessionInput:
     native_id: str | None = None
     header: dict = field(default_factory=dict)
     hook_key: str = "f2"
+    # Files of the session that are not read: listed with hashes (SPEC.md 3.3).
+    unread: Sequence[Path] = ()
 
 
 @dataclass
@@ -205,6 +207,26 @@ def sessions(converter: Converter, paths: Sequence[Path]) -> Iterable[SessionInp
             yield SessionInput([Source("f1", path, "record", converter.SOURCE_FORMAT)])
 
 
+def unread_entries(paths: Sequence[Path]) -> list[dict]:
+    """Path, hash and size of files that belong to a session but are not read."""
+    entries = []
+    for path in paths:
+        data = path.read_bytes()
+        entries.append({"path": display_path(path), "sha256": hashlib.sha256(data).hexdigest(), "size": len(data)})
+    return sorted(entries, key=lambda e: e["path"])
+
+
+def unmapped(converter, source: Source, position: Position, rec: dict) -> dict:
+    """A record no other event fits: kept whole (SPEC.md principle 2)."""
+    if hasattr(converter, "unmapped"):
+        return converter.unmapped(position, rec)
+    spec = {"pos": str(position), "type": "record", "actor": "hook" if source.role == "hook" else "harness",
+            "data": {}, "raw": rec}
+    if isinstance(rec.get("type"), str):
+        spec["data"]["name"] = rec["type"]
+    return spec
+
+
 def _file_number(source: Source) -> int:
     if not re.fullmatch(r"f[1-9][0-9]*", source.key):
         raise ValueError(f"invalid file key: {source.key!r}")
@@ -255,6 +277,8 @@ def convert(converter: Converter, session: SessionInput | Path, hook_path: Path 
     sid = session_id(converter.HARNESS, native_id=nid, path=files["f1"]["path"])
     header = {"type": "session", "format": FORMAT, "id": sid, "harness": {"name": converter.HARNESS},
               "files": files, "converter": converter.CONVERTER}
+    if session.unread:
+        header["unread"] = unread_entries(session.unread)
     if nid:
         header["native_id"] = nid
     if (header.keys() - {"harness"}) & metadata.keys():
@@ -271,7 +295,10 @@ def convert(converter: Converter, session: SessionInput | Path, hook_path: Path 
         for pos, rec in rows:
             if source.role == "hook" and "session" in rec and rec["session"] != nid:
                 continue
-            for mapped in mapper(pos, rec):
+            mapped_specs = mapper(pos, rec)
+            if mapped_specs is None:
+                continue  # the adapter keeps this record whole in the header's raw
+            for mapped in mapped_specs or [unmapped(converter, source, pos, rec)]:
                 s = section_2(dict(mapped))
                 s["src"] = f"{source.key}:{s.pop('pos')}"
                 s["id"] = event_id(sid, s["src"])

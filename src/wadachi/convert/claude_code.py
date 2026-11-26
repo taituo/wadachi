@@ -15,7 +15,7 @@ from . import base
 HARNESS = "claude-code"
 SOURCE_FORMAT = "claude-code-jsonl"
 META_FORMAT = "claude-code-subagent-meta-json"
-CONVERTER = {"name": "wadachi-claude-code", "version": "0.2.0"}
+CONVERTER = {"name": "wadachi-claude-code", "version": "0.3.0", "measured": ["2.1.296"]}
 SELF_FROM_HERDR = True
 META_KEY = "f3"  # f2 stays reserved for a hook log
 
@@ -216,7 +216,6 @@ class _Session:
                     first[name] = r[name]
         self.first = first
         self.child = "agentId" in first
-        self.skipped = Counter()
 
     def _event(self, offset, rec, typ, actor, data=None, pointer="", raw_extra=None, **fields):
         raw = {k: v for k, v in rec.items() if k not in ("type", "timestamp", "uuid", "message")}
@@ -262,25 +261,25 @@ class _Session:
         raw = {k: f[k] for k in ("entrypoint", "gitBranch") if k in f}
         if raw:
             header["raw"] = raw
-        probe = _Session(self.records)
-        for offset, rec in self.records:
-            if not probe.map_record(offset, rec):
-                label = str(rec.get("type", "unknown"))
-                if label == "attachment" and isinstance(rec.get("attachment"), dict):
-                    label += "/" + str(rec["attachment"].get("type"))
-                elif label == "system":
-                    label += "/" + str(rec.get("subtype"))
-                probe.skipped[label] += 1
         x = {}
         cost = [r for _, r in self.records if r.get("type") == "cost-state"]
         if cost:
             # Totals are cumulative; the last record is the session's latest state.
             x["cost_state"] = _plain_numbers({k: v for k, v in cost[-1].items() if k not in ("type", "sessionId")})
-        if probe.skipped:
-            x["skipped_records"] = dict(sorted(probe.skipped.items()))
         if x:
             header["x"] = {HARNESS: x}
         return header
+
+    def unmapped(self, offset, rec):
+        """A record no other event fits, kept whole (SPEC.md principle 2)."""
+        name = str(rec.get("type", "unknown"))
+        if name == "attachment" and isinstance(rec.get("attachment"), dict):
+            name += "/" + str(rec["attachment"].get("type"))
+        elif name == "system":
+            name += "/" + str(rec.get("subtype"))
+        raw = {k: v for k, v in rec.items() if k != "timestamp"}
+        return {"pos": self.positions.get(offset, str(offset)), "type": "record", "actor": "harness",
+                "data": {"name": name}, "raw": raw, **base.source_time(rec.get("timestamp"), raw, "timestamp")}
 
     def _input(self, offset, rec, text, pointer="", typ="prompt"):
         """A user turn's text. Actor from the recorded origin, else by rule."""

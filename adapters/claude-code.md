@@ -45,8 +45,10 @@ filename supplies a native id or a parent: both come from recorded
 ## Record-to-event table
 
 Every event keeps the record's other fields in `raw` (the message without its
-`content`, `toolUseResult`, `origin` and so on). Records without events are
-counted by type in `x.claude-code.skipped_records`.
+`content`, `toolUseResult`, `origin` and so on). Nothing is left out: a record
+no row below maps is a `record` event named by its type (`attachment/<type>`,
+`system/<subtype>`), kept whole. The converter header lists
+`measured: ["2.1.296"]`.
 
 | Source | Mapping | Status |
 |---|---|---|
@@ -75,10 +77,10 @@ counted by type in `x.claude-code.skipped_records`.
 | `attachment` `prompt_snapshot` | `context`, one per `systemPrompt` section, role `system`; the rest of the snapshot (tool list, rendering settings) in `raw` of the first | measured (2.1.296) |
 | `attachment` `queued_command`, `origin.kind` `peer` and `handback` | `subagent_end`, actor agent: `text` is the delivered `prompt`, `text_origin: agent`, `session` the child's id, `of` the `Agent` call whose result recorded the same `agentId` (`how: inferred:agent-id-matches-tool-result`) | measured (2.1.296) |
 | `attachment` `queued_command`, `origin.kind` `human` | `steer`, actor human | not measured |
-| `attachment` without `rendered`, such as `credential_org` | none: not given to the model | measured (2.1.296) |
+| `attachment` without `rendered`, such as `credential_org` | `record`: not given to the model | measured (2.1.296) |
 | `system` `compact_boundary` | `compaction`, `before_tokens` from `compactMetadata.preTokens` | reported |
-| `cost-state` | none; the last one goes to header `x.claude-code.cost_state`, numbers that are not integers as strings | measured (2.1.296) |
-| other `system` subtypes, bookkeeping records, `queue-operation` | none | measured (2.1.296) |
+| `cost-state` | `record`; the last one also goes to header `x.claude-code.cost_state`, numbers that are not integers as strings | measured (2.1.296) |
+| other `system` subtypes, bookkeeping records, `queue-operation` | `record`, kept whole | measured (2.1.296) |
 
 ## Tools to kinds
 

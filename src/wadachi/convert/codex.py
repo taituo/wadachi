@@ -12,7 +12,8 @@ from . import base
 
 HARNESS = "codex"
 SOURCE_FORMAT = "codex-rollout-jsonl"
-CONVERTER = {"name": "wadachi-codex", "version": "0.2.0"}
+CONVERTER = {"name": "wadachi-codex", "version": "0.3.0",
+             "measured": ["0.154.0", "0.157.1", "0.160.1", "0.162.1", "0.163.0", "0.164.0", "0.167.1"]}
 # The outer exec tool runs JavaScript, not a shell. Inner commands have their
 # own CommandExecution records. Do not classify JavaScript by its contents.
 KINDS = {"exec": "other", "wait": "other", "sleep": "other", "request_user_input_async": "other",
@@ -122,7 +123,6 @@ class _Session:
         self.prompted = set()
         self.active_turn = None
         self.serial = 0
-        self.skipped = Counter()
 
     def _event(self, offset, rec, typ, actor, data=None, suffix="", payload=None, **fields):
         raw = {k: v for k, v in rec.items() if k not in ("timestamp", "payload", "type")}
@@ -162,18 +162,19 @@ class _Session:
             header["mode"] = "subagent"
             header["parent"] = {"session": session_id(HARNESS, native_id=spawn["parent_thread_id"]), "relation": "subagent"}
         header["raw"] = raw
-        # Count records with no mapped event, without putting them on a neighbour.
-        probe = _Session(self.records)
-        for offset, rec in self.records:
-            if not probe.map_record(offset, rec) and rec.get("type") != "session_meta":
-                p = rec.get("payload", {})
-                label = rec.get("type", "unknown")
-                if label in ("event_msg", "response_item"):
-                    label += "/" + str(p.get("type", "unknown"))
-                probe.skipped[label] += 1
-        if probe.skipped:
-            header["x"] = {HARNESS: {"skipped_records": dict(probe.skipped)}}
         return header
+
+    def unmapped(self, offset, rec):
+        """A record no other event fits, kept whole (SPEC.md principle 2)."""
+        p = rec.get("payload") if isinstance(rec.get("payload"), dict) else {}
+        name = str(rec.get("type", "unknown"))
+        if name in ("event_msg", "response_item"):
+            name += "/" + str(p.get("type", "unknown"))
+            if p.get("type") == "item_completed" and isinstance(p.get("item"), dict):
+                name += "/" + str(p["item"].get("type", "unknown"))
+        raw = {k: v for k, v in rec.items() if k != "timestamp"}
+        return {"pos": self.positions.get(offset, _position(offset, rec)), "type": "record", "actor": "harness",
+                "data": {"name": name}, "raw": raw, **base.source_time(rec.get("timestamp"), raw, "timestamp")}
 
     def _prompt(self, offset, rec, p, text, turn, goal=False):
         # task_started precedes even the first prompt. Active alone is not steer.
@@ -198,7 +199,7 @@ class _Session:
             return []
         pt = p.get("type")
         if typ == "session_meta":
-            return []
+            return None  # kept whole in the header's raw.session_meta
         if typ in ("turn_context", "world_state") or (typ == "event_msg" and pt == "thread_settings_applied") or (typ == "response_item" and pt in ("configuration_update", "additional_tools")):
             settings = p.get("state", {}) if typ == "world_state" else p.get("thread_settings", {}) if pt == "thread_settings_applied" else p
             data = {k: settings[k] for k in ("model", "cwd", "effort") if isinstance(settings.get(k), str)}

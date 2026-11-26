@@ -39,7 +39,9 @@ def test_constructed_sessions_match_expected_output(tmp_path, path, name):
 
 def test_parent_events():
     lines = convert(PARENT)
-    header, events = lines[0], lines[1:]
+    header = lines[0]
+    records = [e for e in lines[1:] if e["type"] == "record"]
+    events = [e for e in lines[1:] if e["type"] != "record"]
     assert header["native_id"] == PARENT_NID and header["mode"] == "interactive"
     assert header["model"] == "constructed-model-1"
     assert [(e["type"], e["actor"]) for e in events] == [
@@ -73,8 +75,11 @@ def test_parent_events():
     texts = [e["data"].get("text") for e in by_type["prompt"]]
     assert not any(t.startswith("<local-command") for t in texts)
     assert by_type["prompt"][1]["how"] == {"actor": "inferred:interactive-entrypoint"}
-    skipped = header["x"]["claude-code"]["skipped_records"]
-    assert skipped["queue-operation"] == 1 and "user" not in skipped
+    # Nothing is left out: bookkeeping lines are record events, kept whole.
+    assert [r["data"]["name"] for r in records] == [
+        "mode", "permission-mode", "attachment/credential_org", "queue-operation", "system/turn_duration",
+        "cost-state", "last-prompt"]
+    assert all(r["turn"] in (0, 1, 4) for r in records) and records[3]["raw"]["operation"] == "enqueue"
     assert header["x"]["claude-code"]["cost_state"]["totalCostUSD"] == "0.25"
     # is_error is a recorded status, not an exit code, so it does not mark the call failed.
     assert [d for _, d in digests(events)][2] == "t3 h20 r1 f1 x 3s"
@@ -90,6 +95,7 @@ def test_child_links_to_parent():
     end = next(e for e in parent[1:] if e["type"] == "subagent_end")
     assert end["data"]["session"] == header["id"]
     prompt = child[1]
+    assert header["converter"]["measured"] == ["2.1.296"]
     assert (prompt["type"], prompt["actor"], prompt["how"]) == ("prompt", "caller", {"actor": "inferred:subagent-task"})
 
 
@@ -161,7 +167,7 @@ def test_agent_result_origin(tmp_path, handback, origin):
 
 
 def test_context_is_what_the_model_was_given():
-    events = convert(PARENT)[1:]
+    events = [e for e in convert(PARENT)[1:] if e["type"] != "record"]
     context = [e for e in events if e["type"] == "context"]
     assert [(e["data"].get("name"), e["data"].get("role"), e["data"].get("text")) for e in context] == [
         ("model", "system", "Invented model note."),

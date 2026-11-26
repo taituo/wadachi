@@ -134,7 +134,27 @@
           }
         },
         "converter": {
-          "$ref": "#/$defs/nameVersion"
+          "type": "object",
+          "required": [
+            "name"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "version": {
+              "type": "string"
+            },
+            "measured": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
         },
         "native_id": {
           "type": "string",
@@ -241,6 +261,30 @@
         },
         "raw": {
           "type": "object"
+        },
+        "unread": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "path",
+              "sha256"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "sha256": {
+                "$ref": "#/$defs/sha256"
+              },
+              "size": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
         }
       }
     },
@@ -287,7 +331,8 @@
             "observation",
             "manifest",
             "error",
-            "session_end"
+            "session_end",
+            "record"
           ]
         },
         "actor": {
@@ -1040,6 +1085,41 @@
                     "type": "string"
                   }
                 }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "record"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              },
+              "actor": {
+                "enum": [
+                  "human",
+                  "caller",
+                  "agent",
+                  "harness",
+                  "tool",
+                  "hook"
+                ]
               }
             }
           }

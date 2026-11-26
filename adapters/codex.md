@@ -48,7 +48,10 @@ missing native id or timestamp.
 
 Every emitted event keeps the whole payload in `raw.payload`, including fields
 not mapped. Header metadata keeps the complete `session_meta` payload in `raw`.
-Records without events are counted by type in `x.codex.skipped_records`.
+Nothing is left out: a record no row below maps is a `record` event, named
+`<type>/<payload type>` (and `/<item type>` for completed items), kept whole.
+`session_meta` is kept whole in the header's `raw`. The converter header lists
+the measured versions in `converter.measured`.
 
 | Source | Mapping | Status |
 |---|---|---|
@@ -65,12 +68,12 @@ Records without events are counted by type in `x.codex.skipped_records`.
 | `response_item/function_call_output`, `custom_tool_call_output` | `tool_result`, linked by the recorded call id; multi-block output stays in raw unless it contains exactly one text block | measured (codex-cli 0.154.0, 0.157.1, 0.160.1, 0.162.1, 0.163.0, 0.167.1); function outputs absent in 0.160.1 |
 | `response_item/additional_tools` | `setting`, declarations in raw | measured (codex-cli 0.162.1, 0.164.0, 0.167.1) |
 | `response_item/configuration_update` | `setting`, reasoning effort when recorded | measured (codex-cli 0.167.1) |
-| `event_msg/task_started` | used for turn context; counted | measured (codex-cli 0.154.0, 0.157.1, 0.160.1, 0.162.1, 0.163.0, 0.164.0, 0.167.1) |
-| `event_msg/task_complete` | counted; completing a turn is not ending a session | measured (codex-cli 0.154.0, 0.157.1, 0.160.1, 0.162.1, 0.163.0, 0.164.0, 0.167.1) |
+| `event_msg/task_started` | used for turn context; a `record` event | measured (codex-cli 0.154.0, 0.157.1, 0.160.1, 0.162.1, 0.163.0, 0.164.0, 0.167.1) |
+| `event_msg/task_complete` | `record`; completing a turn is not ending a session | measured (codex-cli 0.154.0, 0.157.1, 0.160.1, 0.162.1, 0.163.0, 0.164.0, 0.167.1) |
 | `event_msg/turn_aborted` | `interrupt`, recorded reason, actor harness | measured (codex-cli 0.154.0, 0.157.1, 0.160.1, 0.162.1, 0.163.0, 0.167.1) |
 | `event_msg/thread_settings_applied` | `setting`, other settings in raw | measured (codex-cli 0.154.0, 0.157.1, 0.160.1, 0.162.1, 0.163.0, 0.164.0, 0.167.1) |
 | `event_msg/token_count` | `usage` from `last_token_usage`; totals and rate limits stay in raw | measured (codex-cli 0.154.0, 0.157.1, 0.160.1, 0.162.1, 0.163.0, 0.164.0, 0.167.1) |
-| `event_msg/thread_goal_updated` | counted; no matching base event type | measured (codex-cli 0.157.1) |
+| `event_msg/thread_goal_updated` | `record`; no matching base event type | measured (codex-cli 0.157.1) |
 | `event_msg/item_completed`, `UserMessage` | fallback input when no corresponding response input exists in that turn | measured (codex-cli 0.154.0, 0.157.1, 0.160.1, 0.162.1, 0.163.0, 0.164.0, 0.167.1) |
 | `event_msg/item_completed`, `AgentMessage` | fallback `assistant_text`; matching response ids suppress the duplicate; unmatched asynchronous messages remain | measured (codex-cli 0.154.0, 0.157.1, 0.160.1, 0.162.1, 0.163.0, 0.164.0, 0.167.1); asynchronous delivery measured in 0.162.1, 0.163.0 and 0.167.1 |
 | `event_msg/item_completed`, `Reasoning` | fallback reasoning; matching response ids suppress the duplicate | measured (codex-cli 0.154.0, 0.157.1, 0.160.1, 0.162.1, 0.163.0, 0.167.1) |
@@ -82,7 +85,7 @@ Records without events are counted by type in `x.codex.skipped_records`.
 | `event_msg/item_completed`, `ContextCompaction` | `compaction`, without borrowing the summary from another record | measured (codex-cli 0.157.1, 0.160.1, 0.162.1, 0.163.0, 0.167.1) |
 | `token_usage_record` | `usage` from request `usage`; turn and thread totals in raw | measured (codex-cli 0.154.0, 0.157.1, 0.160.1, 0.162.1, 0.163.0, 0.164.0, 0.167.1) |
 | `compacted` | `compaction.text` from `message`; replacement history stays in raw | measured (codex-cli 0.157.1, 0.160.1, 0.162.1, 0.163.0, 0.167.1) |
-| `ghost_snapshot` and unknown types | counted, not attached to a neighbouring event | unmeasured; constructed test only |
+| `ghost_snapshot` and unknown types | `record`, kept whole, not attached to a neighbouring event | unmeasured; constructed test only |
 
 ## Tool-to-kind table
 

@@ -316,3 +316,46 @@ def test_prepared_adapter_uses_same_snapshot_and_merges_header_metadata(tmp_path
     assert lines[0]["model"] == "constructed-model"
     assert lines[0]["x"] == {"constructed": {"count": 1}, "fixture": {"constructed": True}}
     checked(lines, tmp_path)
+
+
+def test_unmapped_records_are_kept_and_unread_files_are_listed(tmp_path):
+    """SPEC.md principle 2: nothing is left out."""
+    import hashlib, json as _json
+    from wadachi.convert import base as _base
+    from wadachi.validate import validate_session as _validate
+
+    class Toy:
+        HARNESS, SOURCE_FORMAT, KINDS = "toy", "toy-jsonl", {}
+        CONVERTER = {"name": "toy", "version": "1", "measured": ["1.0"]}
+
+        @staticmethod
+        def native_id(records):
+            return "toy-1"
+
+        @staticmethod
+        def map_record(pos, rec):
+            if rec.get("type") == "meta":
+                return None
+            if rec.get("type") == "say":
+                return [{"pos": str(pos), "type": "prompt", "actor": "human", "data": {"text": rec["text"]}}]
+            return []
+
+        @staticmethod
+        def discover():
+            return []
+
+    record = tmp_path / "s.jsonl"
+    record.write_text("".join(_json.dumps(r) + "\n" for r in [
+        {"type": "meta"}, {"type": "say", "text": "Invented."}, {"type": "future", "value": 1}, {"value": 2}]))
+    extra = tmp_path / "steps" / "1.txt"
+    extra.parent.mkdir()
+    extra.write_bytes(b"Invented output.")
+    inp = _base.SessionInput([_base.Source("f1", record, "record", "toy-jsonl")], unread=[extra])
+    lines = _base.convert(Toy, inp)
+    assert [(e["type"], e["data"]) for e in lines[1:]] == [
+        ("prompt", {"text": "Invented."}), ("record", {"name": "future"}), ("record", {})]
+    assert lines[2]["raw"] == {"type": "future", "value": 1} and lines[3]["raw"] == {"value": 2}
+    assert lines[0]["unread"] == [{"path": _base.display_path(extra),
+                                   "sha256": hashlib.sha256(b"Invented output.").hexdigest(), "size": 16}]
+    assert lines[0]["converter"]["measured"] == ["1.0"]
+    assert _validate(_base.write_session(lines, tmp_path / "store")).problems == []

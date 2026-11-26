@@ -12,7 +12,13 @@ wadachi repository; read sections 1 to 7 before you start. Next to this file is
 `converter_template.py`, a working converter for a toy format: copy it, and
 fill in only the marked parts.
 
-The one rule that matters most: **never invent.** A converter that fills a gap
+Two rules matter most. **Never leave out:** every record you read becomes at
+least one event; one that fits no type is a `record` event, kept whole (the
+shared base does this when `map_record` returns nothing; return `None` only for
+a metadata record the header keeps whole). Files of the session you do not
+read go in `SessionInput.unread`, so the header lists them with hashes. Put
+the harness versions you checked in `CONVERTER["measured"]`. And **never
+invent.** A converter that fills a gap
 with a plausible value is worse than one that leaves the gap, because the gap
 is visible and the invention is not.
 

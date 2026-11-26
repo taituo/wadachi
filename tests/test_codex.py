@@ -28,7 +28,9 @@ def convert_rows(tmp_path, monkeypatch):
         out = base.write_session(lines, tmp_path / "store")
         assert validate_session(out).problems == []
         assert lines == base.convert(codex, inp)
-        return lines
+        # Unmapped records are kept as record events; these tests look at the rest.
+        convert.records = [l for l in lines[1:] if l["type"] == "record"]
+        return [l for l in lines if l.get("type") != "record"]
 
     return convert
 
@@ -68,7 +70,9 @@ def test_constructed_goal_continuation_matches_expected_output(tmp_path):
     # Only the machine-dependent provenance path differs in the golden output.
     lines[0]["files"]["f1"]["path"] = "/home/user/constructed-goal-continuation.jsonl"
     assert "".join(dumps(r) + "\n" for r in lines) == (root / "goal-continuation.expected.jsonl").read_text()
-    events = lines[1:]
+    assert [e["data"]["name"] for e in lines[1:] if e["type"] == "record"] == [
+        "event_msg/task_started", "event_msg/item_completed/UserMessage", "event_msg/task_complete"]
+    events = [e for e in lines[1:] if e["type"] != "record"]
     assert [(e["type"], e["actor"]) for e in events] == [
         ("prompt", "caller"), ("reasoning", "agent"), ("tool_call", "agent"),
         ("usage", "harness"), ("tool_result", "tool"), ("steer", "human"),
@@ -178,7 +182,7 @@ def test_prompts_steers_and_queued_new_turns(convert_rows):
     ])
     assert [e["type"] for e in lines[1:]] == ["prompt", "steer", "prompt"]
     assert [e["turn"] for e in lines[1:]] == [1, 1, 2]
-    assert lines[0]["x"]["codex"]["skipped_records"]["event_msg/task_complete"] == 1
+    assert [e["data"]["name"] for e in convert_rows.records] == ["event_msg/task_started", "event_msg/task_complete"]
     assert "ended_at" not in lines[0]
 
 
@@ -373,8 +377,10 @@ def test_interrupt_not_session_end_and_unknown_types_counted(convert_rows):
                           row("event_msg", {"type": "thread_goal_updated", "goal": {"objective": "Invented goal."}}),
                           row("constructed_future_record", {"value": "Invented value."})])
     assert len(lines) == 2 and lines[1]["type"] == "interrupt"
-    skipped = lines[0]["x"]["codex"]["skipped_records"]
-    assert skipped == {"ghost_snapshot": 1, "event_msg/thread_goal_updated": 1, "constructed_future_record": 1}
+    # Nothing is left out: every unknown record is a record event, kept whole.
+    kept = convert_rows.records
+    assert [e["data"]["name"] for e in kept] == ["ghost_snapshot", "event_msg/thread_goal_updated", "constructed_future_record"]
+    assert kept[2]["raw"]["payload"] == {"value": "Invented value."} and kept[2]["turn"] == 0
 
 
 def test_times_are_per_record_and_invalid_unicode_is_cleaned(convert_rows):
