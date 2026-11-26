@@ -64,6 +64,7 @@ agent worked, two minutes nine seconds, and the one path its edit named.
 | [`skills/wadachi/`](skills/wadachi/SKILL.md) | skill for agents that read, search, cite and annotate records |
 | [`skills/wadachi-adapter/`](skills/wadachi-adapter/SKILL.md) | skill and converter template for supporting a new harness |
 | [`adapters/`](adapters/) | what is known about each harness's records and hooks, and how sure it is |
+| [`docs/containers.md`](docs/containers.md) | keeping transcripts from sandboxes and containers, custom homes, pinned versions |
 
 ## Use
 
