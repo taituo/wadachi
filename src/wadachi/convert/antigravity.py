@@ -10,7 +10,7 @@ from . import base
 
 HARNESS = "antigravity"
 SOURCE_FORMAT = "antigravity-transcript-jsonl"
-CONVERTER = {"name": "wadachi-antigravity", "version": "0.1.0", "measured": ["1.5.12", "1.5.13", "1.5.18"]}
+CONVERTER = {"name": "wadachi-antigravity", "version": "0.2.0", "measured": ["1.5.12", "1.5.13", "1.5.18"]}
 SHORT_KEY = "f3"  # the truncated transcript; f2 stays reserved for a hook log
 
 KINDS = {"run_command": "shell", "view_file": "read", "write_to_file": "write", "search_web": "fetch",
@@ -69,15 +69,25 @@ def native_id(records):
     return None  # not recorded in the lines; sessions() supplies the conversation directory's id
 
 
-def _mapped(name, value):
-    """Fields an event's data holds exactly; everything else stays in raw."""
-    if name in ("content", "thinking", "model", "error"):
+MAPPED = {"USER_INPUT": ("content",), "SYSTEM_MESSAGE": ("content",), "EPHEMERAL_MESSAGE": ("content",),
+          "PLANNER_RESPONSE": ("content", "thinking", "tool_calls", *USAGE), "GENERIC": ("content", "status", "error")}
+
+
+def _mapped(typ, name, value, model_mapped=False):
+    """Fields an event's data holds exactly, for this step type; everything else stays in raw."""
+    if name == "created_at":
+        return True
+    if name == "model":
+        return model_mapped and isinstance(value, str)
+    if name not in MAPPED.get(typ, ()):
+        return False
+    if name in ("content", "thinking", "status", "error"):
         return isinstance(value, str)
     if name in USAGE:
         return isinstance(value, int) and not isinstance(value, bool)
     if name == "tool_calls":
         return isinstance(value, list) and all(isinstance(c, dict) and set(c) <= {"name", "args"} for c in value)
-    return name == "created_at"
+    return False
 
 
 def _kind(name):
@@ -100,6 +110,14 @@ class _Session:
         self.positions = {o: ("@" + escape_key(f"step/{r['step_index']}") if unique else str(o)) for o, r in records}
         # A planner step's tool call is answered by the next step when that is a
         # GENERIC step: measured one to one (adapters/antigravity.md).
+        # A model is recorded on some planner steps. The header takes the first; a
+        # setting event marks only a step whose model differs from the one before.
+        self.model_changes, last = set(), None
+        for o, r in records:
+            if isinstance(r.get("model"), str):
+                if last is not None and r["model"] != last:
+                    self.model_changes.add(o)
+                last = r["model"]
         self.answers = {}
         for (o, r), (o2, r2) in zip(records, records[1:]):
             if r.get("type") == "PLANNER_RESPONSE" and r.get("tool_calls") and r2.get("type") == "GENERIC":
@@ -113,7 +131,8 @@ class _Session:
         return header
 
     def _event(self, offset, rec, typ, actor, data=None, pointer="", raw=True, **fields):
-        kept = {k: v for k, v in rec.items() if not _mapped(k, v)} if raw else {}
+        model_mapped = offset in self.model_changes
+        kept = {k: v for k, v in rec.items() if not _mapped(rec.get("type"), k, v, model_mapped)} if raw else {}
         event = {"pos": self.positions[offset] + pointer, "type": typ, "actor": actor, "data": data or {},
                  **base.source_time(rec.get("created_at"), kept, "created_at"), **fields}
         if kept:
@@ -149,7 +168,7 @@ class _Session:
                 events.append(self._event(offset, rec, *args, raw=first, **kwargs))
                 first = False
 
-            if isinstance(rec.get("model"), str):
+            if offset in self.model_changes:
                 add("setting", "harness", {"model": rec["model"]}, "#/model")
             if isinstance(rec.get("thinking"), str):
                 add("reasoning", "agent", {"text": rec["thinking"]}, "#/thinking")
@@ -175,7 +194,7 @@ class _Session:
                 if isinstance(v, int) and not isinstance(v, bool):
                     usage[target] = v
             if usage:
-                add("usage", "harness", usage, "#/input_tokens")
+                add("usage", "harness", usage, "#/" + next(k for k in USAGE if k in usage))
             return events
         if typ == "GENERIC":
             data = {}

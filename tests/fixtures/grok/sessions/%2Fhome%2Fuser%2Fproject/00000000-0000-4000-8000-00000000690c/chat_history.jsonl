@@ -1,4 +1,5 @@
 {"type": "system", "content": "Invented system prompt."}
+{"type": "user", "content": [{"type": "text", "text": "<user_info>Invented rules.</user_info>"}]}
 {"type": "user", "content": [{"type": "text", "text": "Invented environment."}], "synthetic_reason": "system_reminder"}
 {"type": "user", "content": [{"type": "text", "text": "Invented request."}], "prompt_index": 0}
 {"type": "reasoning", "id": "rs_constructed_1", "status": "completed", "encrypted_content": "aW52ZW50ZWQ=", "summary": [{"type": "summary_text", "text": "Invented summary."}]}

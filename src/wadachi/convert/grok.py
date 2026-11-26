@@ -11,7 +11,7 @@ from . import base
 
 HARNESS = "grok"
 SOURCE_FORMAT = "grok-chat-history-jsonl"
-CONVERTER = {"name": "wadachi-grok", "version": "0.1.1", "measured": ["1.0.92"]}
+CONVERTER = {"name": "wadachi-grok", "version": "0.2.0", "measured": ["1.0.92"]}
 SELF_FROM_HERDR = True
 # f1 chat history; f2 reserved for a hook log; then fixed aux keys.
 AUX = {"f3": ("events.jsonl", "grok-events-jsonl", True),
@@ -101,6 +101,7 @@ class _Session:
     def __init__(self, records):
         self.records = records
         self.aux = {}
+        self.model = None
         ids = [r.get("id") for _, r in records if r.get("type") == "reasoning"]
         self.reasoning_ids = {i for i in ids if isinstance(i, str) and ids.count(i) == 1}
 
@@ -120,8 +121,13 @@ class _Session:
         info = summary.get("info") or {}
         if isinstance(info.get("cwd"), str):
             header["cwd"] = info["cwd"]
-        if isinstance(summary.get("current_model_id"), str):
+        first = next((r.get("model_id") for _, r in self.aux.get("f3") or []
+                      if r.get("type") == "turn_started" and isinstance(r.get("model_id"), str)), None)
+        if first:
+            header["model"] = first  # the starting model; summary.json has the latest
+        elif isinstance(summary.get("current_model_id"), str):
             header["model"] = summary["current_model_id"]
+        self.model = header.get("model")
         t = base.source_time(summary.get("created_at"), {}, "created_at")
         if t:
             header["started_at"] = t["t"]
@@ -158,7 +164,13 @@ class _Session:
         if typ == "user":
             if isinstance(rec.get("synthetic_reason"), str):
                 data = {"name": rec["synthetic_reason"], "role": "user", **({} if text is None else {"text": text})}
-                return [self._event(offset, rec, "context", "harness", data, mapped=mapped)]
+                return [self._event(offset, rec, "context", "harness", data, mapped=mapped + ("synthetic_reason",))]
+            if "prompt_index" not in rec:
+                # Every measured prompt has prompt_index; user lines without one are the
+                # harness's own blocks (user info, rules) at the start of a session.
+                data = {"role": "user", **({} if text is None else {"text": text})}
+                return [self._event(offset, rec, "context", "harness", data, mapped=mapped,
+                                    how={"type": "inferred:user-line-without-prompt-index"})]
             headless = self._one("f7").get("is_non_interactive")
             actor = "caller" if headless is True else "human"
             fields = {"how": {"actor": "inferred:session-interactivity"}}
@@ -166,9 +178,13 @@ class _Session:
                                 mapped=mapped, **fields)]
         if typ == "assistant":
             events = []
+            calls = rec.get("tool_calls")
+            plain = isinstance(calls, list) and all(isinstance(c, dict) and set(c) <= {"id", "name", "arguments"}
+                                                    for c in calls)
+            mapped_a = (("content",) if text else ()) + (("tool_calls",) if plain else ())
             if text:
                 events.append(self._event(offset, rec, "assistant_text", "agent", {"text": text}, "#/content",
-                                          mapped=("content", "tool_calls")))
+                                          mapped=mapped_a))
             for i, call in enumerate(rec.get("tool_calls") or []):
                 if not isinstance(call, dict):
                     continue
@@ -181,7 +197,7 @@ class _Session:
                 if "arguments" in call:
                     data["args"] = call["arguments"]  # a JSON-encoded string, kept as recorded
                 events.append(self._event(offset, rec, "tool_call", "agent", data, f"#/tool_calls/{i}",
-                                          mapped=("content", "tool_calls")))
+                                          mapped=mapped_a))
             if events and "raw" in events[0]:
                 for e in events[1:]:
                     e.pop("raw", None)  # the record's other fields, once
@@ -216,21 +232,34 @@ class _Session:
         if key == "f5":
             return [{"pos": str(offset), "type": "context", "actor": "harness", "data": {"name": "tool_definitions"},
                      "raw": rec}]
-        raw = {k: v for k, v in rec.items() if k != "ts"}
-        timed = base.source_time(rec.get("ts"), raw, "ts")
         typ = rec.get("type")
+        drop = {"ts"}
         if typ == "permission_resolved" and rec.get("decision") in DECISIONS:
-            spec = {"pos": str(offset), "type": "permission", "actor": "harness",
-                    "data": {"decision": DECISIONS[rec["decision"]]}, "raw": raw, **timed}
+            out, data = "permission", {"decision": DECISIONS[rec["decision"]]}
+            drop.add("decision")
+        elif typ == "permission_requested":
+            out, data = "permission", {"decision": "asked"}
         elif typ == "tool_completed" and rec.get("outcome") == "error":
-            spec = {"pos": str(offset), "type": "error", "actor": "harness", "data": {"code": "error"}, "raw": raw,
-                    **timed}
-        elif typ == "turn_started" and isinstance(rec.get("model_id"), str):
-            spec = {"pos": str(offset), "type": "setting", "actor": "harness", "data": {"model": rec["model_id"]},
-                    "raw": raw, **timed}
+            out, data = "error", {"code": "error"}
+            drop.add("outcome")
+        elif typ == "turn_started" and isinstance(rec.get("model_id"), str) and rec["model_id"] != self.model:
+            out, data = "setting", {"model": rec["model_id"]}
+            drop.add("model_id")
+            self.model = rec["model_id"]
+        elif typ == "turn_ended" and rec.get("outcome") == "cancelled":
+            out, data = "interrupt", {}
+            if isinstance(rec.get("cancellation_category"), str):
+                data["reason"] = rec["cancellation_category"]
+                drop.add("cancellation_category")
         else:
-            spec = {"pos": str(offset), "type": "record", "actor": "harness",
-                    "data": {"name": typ} if isinstance(typ, str) else {}, "raw": raw, **timed}
+            out, data = "record", ({"name": typ} if isinstance(typ, str) else {})
+        raw = {k: v for k, v in rec.items() if k not in drop}
+        timed = base.source_time(rec.get("ts"), raw, "ts")
+        actor = "human" if out == "interrupt" and (rec.get("cancellation_context") or {}).get("trigger") == "ctrl_c" else "harness"
+        how = {"actor": "inferred:ctrl-c-trigger"} if actor == "human" else {}
+        spec = {"pos": str(offset), "type": out, "actor": actor, "data": data, "raw": raw, **timed}
+        if how:
+            spec["how"] = how
         if isinstance(rec.get("tool_call_id"), str):
             spec["of_call"] = rec["tool_call_id"]
         return [spec]

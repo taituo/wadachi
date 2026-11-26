@@ -7,6 +7,8 @@ No session content or identifying values appear in these notes or fixtures.
 
 Measured on one machine with Grok CLI 1.0.92: 3 local sessions (one
 interactive with a compaction, one headless run made for this measurement).
+An independent audit by Antigravity (Gemini 4 Neon) compared all of them with
+the raw files; its findings are fixed in converter 0.2.0.
 The CLI's own user guide is installed under `GROK_HOME/docs`.
 
 | Fact | Status |
@@ -39,16 +41,18 @@ line with a unique id is `@reasoning/<id>`.
 | header | native id `info.id`, `cwd`, `model`, `started_at` from `summary.json`; `mode` headless or interactive from `prompt_context.json` `is_non_interactive`; no `harness.version` (not recorded), so `dump` reports every Grok session as unmeasured | measured (1.0.92) |
 | `system` | `context`, role `system` | measured (1.0.92) |
 | `user` with `synthetic_reason` | `context`, role `user`, `name` the reason | measured (1.0.92) |
-| `user` | `prompt`; actor caller in a headless session, else human (`how: inferred:session-interactivity`) | measured (1.0.92) |
+| `user` with `prompt_index` | `prompt`; actor caller in a headless session, else human (`how: inferred:session-interactivity`) | measured (1.0.92) |
+| `user` with neither | `context`, role `user` (`how: inferred:user-line-without-prompt-index`): the harness's own user-info and rules block at the start of a session | measured (1.0.92), found by the independent audit |
 | `assistant` | `assistant_text` when content is not empty; `tool_call` per call with `call_id`, `args` as the recorded string | measured (1.0.92) |
 | `reasoning` | `reasoning`, `redacted: true`; `text` the summary when there is one | measured (1.0.92) |
 | `tool_result` | `tool_result` linked by `tool_call_id` | measured (1.0.92) |
-| `events.jsonl` `turn_started` | `setting` with the model, timed | measured (1.0.92) |
-| `events.jsonl` `permission_resolved` | `permission` (`allow` is `allowed`) | measured (1.0.92) for `allow` |
+| `events.jsonl` `turn_started` | `setting` only when the model differs from the one before; the header's `model` is the first turn's | measured (1.0.92) |
+| `events.jsonl` `permission_requested`, `permission_resolved` | `permission`: `asked`, and `allow` is `allowed` | measured (1.0.92) for `allow` |
+| `events.jsonl` `turn_ended` with outcome `cancelled` | `interrupt`, `reason` the cancellation category; actor human when the trigger is `ctrl_c` (`how: inferred:ctrl-c-trigger`) | measured (1.0.92) |
 | `events.jsonl` `tool_completed` with outcome `error` | `error`, `of` the call | measured (1.0.92) |
 | other `events.jsonl` lines | `record`, timed; `of` the call when they name one | measured (1.0.92) |
 | `system_prompt.txt` | `context`, `name` `system_prompt` | measured (1.0.92) |
-| `tool_definitions.json` | `context`, `name` `tool_definitions`, the list in `raw` | measured (1.0.92) |
+| `tool_definitions.json` | `context`, `name` `tool_definitions`; the file is a JSON array, kept as `raw.value` because raw is an object | measured (1.0.92) |
 | any other chat history type | `record`, kept whole | |
 
 Events from `events.jsonl` with no `of` come after the chat history's events

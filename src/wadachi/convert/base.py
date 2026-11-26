@@ -207,6 +207,17 @@ def sessions(converter: Converter, paths: Sequence[Path]) -> Iterable[SessionInp
             yield SessionInput([Source("f1", path, "record", converter.SOURCE_FORMAT)])
 
 
+def _holds(value, ref) -> bool:
+    """Whether a raw value already holds the reference as one of its values."""
+    if value == ref:
+        return True
+    if isinstance(value, dict):
+        return any(_holds(v, ref) for v in value.values())
+    if isinstance(value, list):
+        return any(_holds(v, ref) for v in value)
+    return False
+
+
 def unread_entries(paths: Sequence[Path]) -> list[dict]:
     """Path, hash and size of files that belong to a session but are not read."""
     entries = []
@@ -330,7 +341,8 @@ def convert(converter: Converter, session: SessionInput | Path, hook_path: Path 
                 target = table.get(ref)
                 if target in earlier:
                     s["of"] = target
-                else:
+                elif not _holds(s.get("raw"), ref):
+                    # Keep an unresolved reference, unless raw already keeps the source field.
                     s.setdefault("raw", {})[name] = ref
         if "of" in s and s["of"] not in earlier:
             s.setdefault("raw", {})["of"] = s.pop("of")

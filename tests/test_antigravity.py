@@ -45,7 +45,7 @@ def test_events_and_links():
     assert [(e["type"], e["actor"]) for e in events] == [
         ("context", "harness"), ("prompt", "human"),
         ("reasoning", "agent"), ("tool_call", "agent"), ("usage", "harness"), ("tool_result", "tool"),
-        ("setting", "harness"), ("tool_call", "agent"), ("usage", "harness"), ("tool_result", "tool"),
+        ("tool_call", "agent"), ("usage", "harness"), ("tool_result", "tool"),
         ("error", "tool"), ("context", "harness"), ("assistant_text", "agent"), ("usage", "harness"),
         ("record", "harness")]
     calls = [e for e in events if e["type"] == "tool_call"]
@@ -53,7 +53,10 @@ def test_events_and_links():
     assert [r["of"] for r in results] == [c["id"] for c in calls]
     assert all(r["how"] == {"of": "inferred:next-step-answers-call"} for r in results)
     assert calls[0]["data"]["kind"] == "shell" and calls[1]["data"]["paths"] == ["/home/user/project/a.txt"]
-    assert results[1]["data"]["status_as_recorded"] == "ERROR"
+    assert results[1]["data"]["status_as_recorded"] == "ERROR" and "status" not in results[1]["raw"]
+    # The only recorded model is the header's: no setting, and the step keeps model in raw.
+    assert header["model"] == "constructed-model-2" and calls[1]["data"]["kind"] == "read"
+    assert next(e for e in events if e["src"].startswith("f1:@step/4"))["raw"]["model"] == "constructed-model-2"
     # Nothing is left out: the unknown step keeps its content; other files are listed.
     assert events[-1]["raw"]["content"] == "Invented future content."
     unread = [u["path"].rsplit(CONVERSATION + "/", 1)[1] for u in header["unread"]]

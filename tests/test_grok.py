@@ -43,7 +43,11 @@ def test_events_sources_and_links():
     assert [u["path"].rsplit(SID + "/", 1)[1] for u in header["unread"]] == [
         "plan.json", "terminal/call-constructed-2-1.log", "updates.jsonl"]
     by = lambda t: [e for e in events if e["type"] == t]
-    assert [e["data"].get("name") for e in by("context")] == [None, "system_reminder", "system_prompt", "tool_definitions"]
+    ctx = by("context")
+    assert [e["data"].get("name") for e in ctx] == [None, None, "system_reminder", "system_prompt", "tool_definitions"]
+    # A user line without prompt_index is the harness's own block, not a prompt.
+    assert ctx[1]["how"] == {"type": "inferred:user-line-without-prompt-index"} and ctx[1]["turn"] == 0
+    assert len(by("prompt")) == 1
     calls, results = by("tool_call"), by("tool_result")
     assert [r["of"] for r in results] == [c["id"] for c in calls]
     assert calls[0]["data"]["args"] == '{"target_file": "/home/user/project/a.txt"}'  # kept as recorded
@@ -52,11 +56,19 @@ def test_events_sources_and_links():
     assert all("t" not in e for e in events if e["src"].startswith("f1:"))
     assert all("t" in e for e in events if e["src"].startswith("f3:"))
     err = by("error")[0]
-    assert err["of"] == calls[1]["id"] and err["raw"]["outcome"] == "error"
-    assert by("permission")[0]["data"] == {"decision": "allowed"}
+    assert err["of"] == calls[1]["id"] and "outcome" not in err["raw"]  # mapped, not repeated
+    assert [p["data"] for p in by("permission")] == [{"decision": "asked"}, {"decision": "allowed"}]
+    assert "decision" not in by("permission")[1]["raw"]
+    stop = by("interrupt")[0]
+    assert (stop["actor"], stop["data"], stop["how"]) == ("human", {"reason": "mid_turn_abort"},
+                                                          {"actor": "inferred:ctrl-c-trigger"})
+    # The model did not change, so turn_started is a record, not a setting.
+    assert not by("setting") and header["model"] == "constructed-grok"
+    # An unresolved reference is not repeated in raw when raw keeps the source field.
+    assert all("of_call" not in e.get("raw", {}) for e in events)
     future = [e for e in events if e["type"] == "record" and e["src"].startswith("f1:")]
     assert future[0]["raw"]["content"] == "Invented future line."
-    assert [d for _, d in digests(events)] == ["t1 p17 r1 s1!1"]
+    assert [d for _, d in digests(events)] == ["t1 p17 r1 s1!1 x"]  # the prompt has no time, so no duration
 
 
 def test_dump_with_grok_home(tmp_path, monkeypatch):
