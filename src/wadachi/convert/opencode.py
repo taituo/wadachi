@@ -16,7 +16,7 @@ from . import base
 
 HARNESS = "opencode"
 SOURCE_FORMAT = "opencode-session-sqlite/1"
-CONVERTER = {"name": "wadachi-opencode", "version": "0.1.3"}
+CONVERTER = {"name": "wadachi-opencode", "version": "0.1.4"}
 SELF_FROM_HERDR = True
 KINDS = {"read": "read", "write": "write", "edit": "edit", "apply_patch": "edit", "bash": "shell",
          "glob": "search", "grep": "search", "webfetch": "fetch", "websearch": "fetch", "task": "subagent",
@@ -208,7 +208,8 @@ def _records(c, nid):
     message_data = {r["id"]: json.loads(r["data"]) for r in messages}
     for r in messages:
         d = json.loads(r["data"])
-        add("message", r, "metadata", d.get("time", {}).get("created", r["time_created"]))
+        add("message", r, "metadata", d.get("time", {}).get("created", r["time_created"]),
+            clock=None if "created" in d.get("time", {}) else "row-created-time")
         if d.get("role") == "assistant":
             clock = None if "completed" in d.get("time", {}) else "row-updated-time"
             add("message", r, "usage", d.get("time", {}).get("completed", r["time_updated"]), 3, clock=clock)

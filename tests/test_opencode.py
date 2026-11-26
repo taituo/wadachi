@@ -471,3 +471,24 @@ def test_core_process_and_initial_route_are_not_treated_as_session_identity(monk
     monkeypatch.setenv("XDG_DATA_HOME", "")
     monkeypatch.setenv("HOME", "/home/user")
     assert opencode.data_home() == Path("/home/user/.local/share/opencode")
+
+
+def test_user_metadata_missing_created_marks_own_row_clock(db, tmp_path):
+    sid, mid = "ses_constructed_parent", "msg_constructed_missing_created"
+    db.session(sid, created=0)
+    data = {"role": "user", "time": {}, "model": {"modelID": "constructed-model"}}
+    db.message(mid, sid, created=1000)
+    db.c.execute("UPDATE message SET data=? WHERE id=?", (json.dumps(data), mid))
+    db.part("prt_constructed_native_time", mid, sid,
+            {"type": "text", "text": "Invented input.", "time": {"start": 2000}}, 3000)
+    lines, _ = converted(db, tmp_path)
+    setting = next(e for e in lines[1:] if e["type"] == "setting")
+    # Expected output is constructed, including the clock and exact source row.
+    assert {k: setting[k] for k in ("type", "actor", "data", "t", "how", "raw")} == {
+        "type": "setting", "actor": "harness", "data": {"model": "constructed-model"},
+        "t": "1970-01-01T00:00:01Z",
+        "how": {"type": "inferred:message-settings", "t": "inferred:row-created-time"},
+        "raw": {"row": {"id": mid, "session_id": sid, "time_created": 1000,
+                        "time_updated": 1000, "data": json.dumps(data)}}}
+    prompt = next(e for e in lines[1:] if e["type"] == "prompt")
+    assert prompt["t"] == "1970-01-01T00:00:02Z" and "t" not in prompt["how"]

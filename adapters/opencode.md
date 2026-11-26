@@ -179,12 +179,15 @@ additive deltas to sum across both streams.
 
 ## Parents, compaction and delivery
 
-Fifteen sessions had parent_id. Thirteen had matching task-tool evidence:
+In the refreshed read-only snapshot, all 15 sessions with parent_id had
+matching task-tool evidence:
 the parent's task part metadata.sessionId names the child. The child's header
 then names the parent and relation subagent. Both the task row and session row
-are retained; no link is guessed from a title or directory. Two parent ids
-lacked that evidence. Their rows remain in raw without a guessed fork/subagent
-relation. No explicit fork marker was measured in the database.
+are retained; no link is guessed from a title or directory. Zero parent ids
+lacked evidence in this snapshot. The earlier 13-proven/two-ambiguous census
+described an earlier snapshot. A parent_id without task evidence remains raw
+without a guessed fork/subagent relation, as the constructed test checks.
+No explicit fork marker was measured in the database.
 
 There were 51 compaction parts and 51 assistant messages marked summary. The
 summary text stays in compaction events, never assistant_text. Internal
