@@ -15,7 +15,7 @@ from . import base
 HARNESS = "claude-code"
 SOURCE_FORMAT = "claude-code-jsonl"
 META_FORMAT = "claude-code-subagent-meta-json"
-CONVERTER = {"name": "wadachi-claude-code", "version": "0.4.0", "measured": ["2.1.296"]}
+CONVERTER = {"name": "wadachi-claude-code", "version": "0.4.1", "measured": ["2.1.296"]}
 SELF_FROM_HERDR = True
 META_KEY = "f3"  # f2 stays reserved for a hook log
 
@@ -188,7 +188,8 @@ def _once(events):
         return events
     shared = dict(events[0].get("raw", {}))
     for e in events[1:]:
-        raw = {k: v for k, v in e.get("raw", {}).items() if k not in shared or shared[k] != v}
+        # A block belongs to its own position: never treated as a shared record field.
+        raw = {k: v for k, v in e.get("raw", {}).items() if k == "block" or k not in shared or shared[k] != v}
         if raw:
             e["raw"] = raw
         else:
@@ -205,8 +206,11 @@ def _once(events):
             message = dict(message)
             if any(d.get("role") == message.get("role") for d in datas if "role" in d):
                 message.pop("role", None)
-            if any(ev["type"] == "usage" for ev in events) and isinstance(message.get("usage"), dict):
-                rest = {k: v for k, v in message["usage"].items() if k not in USAGE}
+            usage_data = next((ev["data"] for ev in events if ev["type"] == "usage"), None)
+            if usage_data is not None and isinstance(message.get("usage"), dict):
+                # Only counts the usage event actually holds; an unmapped value stays.
+                rest = {k: v for k, v in message["usage"].items()
+                        if not (k in USAGE and usage_data.get(USAGE[k]) == v)}
                 if rest:
                     message["usage"] = rest
                 else:

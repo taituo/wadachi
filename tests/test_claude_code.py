@@ -211,3 +211,17 @@ def test_no_block_is_dropped(tmp_path):
     assert [e["type"] for e in lines[1:]] == ["record", "tool_call", "tool_result", "record", "prompt"]
     assert lines[3]["raw"]["block"]["content"][1]["text"] == "SECONDTEXT" and "text" not in lines[3]["data"]
     assert lines[5]["data"] == {"text": "Invented."} and lines[5]["raw"]["content"][1]["type"] == "image"
+
+
+def test_repeated_blocks_and_unmapped_usage_stay(tmp_path):
+    """Round 2 review: identical unknown blocks and unmapped usage values are kept."""
+    block = {"type": "server_tool_use", "id": "x", "input": {}}
+    rows = [{"type": "assistant", "uuid": "u", "sessionId": "s", "message": {"id": "m", "content": [block, block],
+             "usage": {"input_tokens": 10**19, "output_tokens": 3}}}]
+    path = tmp_path / "repeat.jsonl"
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    events = base.convert(cc, path)[1:]
+    assert [e["raw"].get("block") for e in events if e["type"] == "record"] == [block, block]
+    usage = next(e for e in events if e["type"] == "usage")
+    assert usage["data"] == {"output_tokens": 3}
+    assert events[0]["raw"]["message"]["usage"] == {"input_tokens": str(10**19)}

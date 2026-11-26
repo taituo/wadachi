@@ -142,7 +142,7 @@ Some files of a session are not read as sources: a byte-identical copy, or a
 collection with one file per step whose count changes, such as a tool's full
 output kept beside the record. They are not left out silently. The header's
 `unread` lists each with `path` (written as in `files`), the `sha256` of its
-bytes and its `size`, in path order. A store that keeps raw files (section 13)
+bytes and its `size`, in path order (by Unicode code point, as `files` paths are written). A store that keeps raw files (section 13)
 keeps these too.
 
 ### 3.4 Versions of the harness
