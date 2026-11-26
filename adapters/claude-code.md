@@ -26,7 +26,7 @@ written by Claude Code 2.1.296. That is a small corpus. Rows marked
 | `toolUseResult` for `Bash` holds `stdout`, `stderr`, `interrupted`, `isImage`, `noOutputExpected`; **no exit code** | measured (2.1.296) |
 | `tool_result.content` is a string or a list of text blocks; `is_error` is present on some | measured (2.1.296) |
 | `WebFetch` returns the answer of a second model to the call's `prompt`, not the page; the page is not in the transcript | measured (2.1.296), and documented |
-| The `Agent` tool can run a subagent in **hand-back** mode: the tool result is a harness note (`toolUseResult.handback: true`, `agentId`), and the report arrives later as an `attachment` of type `queued_command` whose `origin` is `{"kind": "peer", "from": <agent id>, "handback": true, "body": …}` | measured (2.1.296) |
+| The `Agent` tool can run a subagent in **hand-back** mode: the tool result is a harness note (`toolUseResult.handback: "send"`, `handbackReport`, `agentId`), and the report arrives later as an `attachment` of type `queued_command` whose `origin` is `{"kind": "peer", "from": <agent id>, "handback": true, "body": …}` | measured (2.1.296) |
 | The same hand-back appears as a `queue-operation` pair (`enqueue`, then `remove` with reason `absorbed_mid_turn`) | measured (2.1.296) |
 | API failures are `assistant` lines with `isApiErrorMessage: true` and `error` (for example `authentication_failed`) | measured (2.1.296) |
 | `attachment` lines carry injected context: `prompt_snapshot` (the full system prompt), `environment`, `model`, `date`, `session_context` (which includes the account's email address), `deferred_tools_delta`, `agent_listing_delta`, `skill_listing`, `mcp_instructions_delta`, `total_tokens_reminder`, `remote_session_change`, `credential_org`, `plan_mode` | measured (2.1.296) |
@@ -89,7 +89,7 @@ counted by type in `x.claude-code.skipped_records`.
 | `Glob`, `Grep` | search | `path` | | documented |
 | `WebFetch` | fetch | | `model` | measured (2.1.296) |
 | `WebSearch` | fetch | | | documented |
-| `Agent` (named `Task` in older versions) | subagent | | `tool` in hand-back mode, else `agent` | measured (2.1.296) for hand-back |
+| `Agent` (named `Task` in older versions) | subagent | | `tool` when `toolUseResult.handback` is `"send"`; `agent` when there is no `handback`; left out for any other value | measured (2.1.296) for hand-back |
 | `mcp__<server>__<tool>` | mcp | | | documented |
 | anything else, including `SubagentHandback`, `TodoWrite` | other | | | measured (2.1.296) for `SubagentHandback` |
 

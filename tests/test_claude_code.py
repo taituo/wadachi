@@ -144,3 +144,16 @@ def test_discovery_and_dump(tmp_path, monkeypatch):
     assert len(list((store / "sessions").glob("*.jsonl"))) == 2
     assert validate_store(store) == []
     assert dump(store, harness="claude-code") == 0  # unchanged sources are skipped
+
+
+@pytest.mark.parametrize("handback,origin", [("send", "tool"), (None, "agent"), ("later", None)])
+def test_agent_result_origin(tmp_path, handback, origin):
+    result = {"agentId": "a1"} | ({} if handback is None else {"handback": handback})
+    rows = [{"type": "assistant", "uuid": "a", "sessionId": "s", "message": {"id": "m", "content": [
+                {"type": "tool_use", "id": "t1", "name": "Agent", "input": {}}]}},
+            {"type": "user", "uuid": "b", "sessionId": "s", "toolUseResult": result, "message": {"content": [
+                {"type": "tool_result", "tool_use_id": "t1", "content": "Invented."}]}}]
+    path = tmp_path / "agent.jsonl"
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    data = base.convert(cc, path)[-1]["data"]
+    assert data.get("text_origin") == origin

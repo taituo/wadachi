@@ -14,7 +14,7 @@ from . import base
 HARNESS = "claude-code"
 SOURCE_FORMAT = "claude-code-jsonl"
 META_FORMAT = "claude-code-subagent-meta-json"
-CONVERTER = {"name": "wadachi-claude-code", "version": "0.1.0"}
+CONVERTER = {"name": "wadachi-claude-code", "version": "0.1.1"}
 SELF_FROM_HERDR = True
 META_KEY = "f3"  # f2 stays reserved for a hook log
 
@@ -31,6 +31,7 @@ USAGE = {"input_tokens": "input_tokens", "output_tokens": "output_tokens",
          "cache_read_input_tokens": "cache_read_tokens", "cache_creation_input_tokens": "cache_write_tokens"}
 # Text Claude Code writes into user records itself. Exact prefixes, not guesses.
 HARNESS_TEXT = ("<local-command-stdout>", "<local-command-stderr>", "<local-command-caveat>")
+HANDBACK = ("send", True)  # toolUseResult.handback values that mean hand-back mode
 INTERRUPTS = ("[Request interrupted by user]", "[Request interrupted by user for tool use]")
 
 
@@ -322,10 +323,14 @@ class _Session:
                 data["status_as_recorded"] = v if isinstance(v, str) else dumps(v)
             tool = self.tools.get(call)
             if text is not None:
-                handback = isinstance(rec.get("toolUseResult"), dict) and rec["toolUseResult"].get("handback") is True
+                result = rec.get("toolUseResult") if isinstance(rec.get("toolUseResult"), dict) else {}
                 if tool in ("Agent", "Task"):
-                    # In hand-back mode the result is a harness note; the report arrives separately.
-                    data["text_origin"] = "tool" if handback else "agent"
+                    # In hand-back mode the result is a harness note; the report arrives
+                    # separately. "send" is the measured value; others are left unknown.
+                    if result.get("handback") in HANDBACK:
+                        data["text_origin"] = "tool"
+                    elif "handback" not in result:
+                        data["text_origin"] = "agent"
                 elif tool in TEXT_ORIGIN:
                     data["text_origin"] = TEXT_ORIGIN[tool]
             event = self._event(offset, rec, "tool_result", "tool", data, f"#/message/content/{i}")
