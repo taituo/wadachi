@@ -75,6 +75,8 @@ wadachi digest examples/store/sessions/s_e6468e8dce041668.jsonl
 
 wadachi convert codex --list
 wadachi dump --harness codex
+wadachi convert opencode --list
+wadachi dump --harness opencode
 wadachi dump --self --keep-raw
 ```
 
@@ -89,6 +91,6 @@ skills describe also works with `jq` and `grep`.
 ## Status
 
 Version 0.1, a draft. The format, schemas, tools and conformance suite are
-consistent with each other and tested. The Codex converter is available; the
-notes in `adapters/` say for each harness what has been checked against real
-files and what has not.
+consistent with each other and tested. Codex and OpenCode converters are
+available. The notes in `adapters/` say for each harness what has been checked
+against real files and what has not.
