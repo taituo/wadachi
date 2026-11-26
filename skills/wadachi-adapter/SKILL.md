@@ -103,6 +103,12 @@ Supply `HARNESS`, `SOURCE_FORMAT`, `CONVERTER`, `KINDS`, `native_id(records)`,
 default reads `wadachi-hook/0.1`. Register the module in
 `src/wadachi/convert/__init__.py`. The CLI uses it for `wadachi convert`.
 
+When mapping needs session context, `prepare(records)` may return a fresh
+adapter for that conversion. The records come from the same complete snapshot
+that the base hashes. Its optional `session_header()` returns recorded header
+metadata. Keep turn matching and duplicate-view rules in the adapter; ids,
+ordering and canonical output still belong to the base.
+
 For more than one record file, implement `sessions(paths)` returning
 `base.SessionInput` items. It also handles discovery when paths is empty.
 Each `base.Source` has a fixed key, path, role and format. Reserve missing
