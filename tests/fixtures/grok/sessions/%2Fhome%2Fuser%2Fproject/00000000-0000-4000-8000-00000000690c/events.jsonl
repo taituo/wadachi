@@ -1,0 +1,8 @@
+{"type": "turn_started", "ts": "2031-05-06T07:08:00.250Z", "session_id": "00000000-0000-4000-8000-00000000690c", "model_id": "constructed-grok", "turn_number": 1, "schema_version": "1.0", "session_relationship": "primary", "yolo_mode": false, "conversation_message_count": 2}
+{"type": "phase_changed", "ts": "2031-05-06T07:08:01.250Z", "phase": "waiting_for_model"}
+{"type": "permission_requested", "ts": "2031-05-06T07:08:02.250Z", "tool_name": "read_file"}
+{"type": "permission_resolved", "ts": "2031-05-06T07:08:03.250Z", "tool_name": "read_file", "decision": "allow", "wait_ms": 4}
+{"type": "tool_started", "ts": "2031-05-06T07:08:03.250Z", "tool_name": "read_file"}
+{"type": "tool_completed", "ts": "2031-05-06T07:08:04.250Z", "tool_name": "read_file", "tool_call_id": "call-constructed-1", "outcome": "success", "duration_ms": 9}
+{"type": "tool_completed", "ts": "2031-05-06T07:08:05.250Z", "tool_name": "run_terminal_command", "tool_call_id": "call-constructed-2", "outcome": "error", "duration_ms": 11}
+{"type": "turn_ended", "ts": "2031-05-06T07:08:06.250Z", "outcome": "completed"}

@@ -267,6 +267,9 @@ def convert(converter: Converter, session: SessionInput | Path, hook_path: Path 
     # It sees only records from this same snapshot, never a second live read.
     if hasattr(converter, "prepare"):
         converter = converter.prepare(records)
+    if hasattr(converter, "attach_aux"):
+        # Aux sources read for context, from the same snapshots that were hashed.
+        converter.attach_aux({source.key: rows for source, rows in loaded if source.role == "aux"})
     metadata = converter.session_header() if hasattr(converter, "session_header") else {}
     for name, value in session.header.items():
         if name in ("x", "raw", "how") and isinstance(metadata.get(name), dict) and isinstance(value, dict):
@@ -291,7 +294,12 @@ def convert(converter: Converter, session: SessionInput | Path, hook_path: Path 
     for source, rows in loaded:
         if not source.events:
             continue
-        mapper = converter.map_record if source.role != "hook" else getattr(converter, "map_hook", map_hook)
+        if source.role == "hook":
+            mapper = getattr(converter, "map_hook", map_hook)
+        elif source.role == "aux" and hasattr(converter, "map_aux"):
+            mapper = lambda pos, rec, key=source.key: converter.map_aux(key, pos, rec)
+        else:
+            mapper = converter.map_record
         for pos, rec in rows:
             if source.role == "hook" and "session" in rec and rec["session"] != nid:
                 continue

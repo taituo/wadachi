@@ -18,7 +18,8 @@ their formats without notice:
 | [Claude Code](claude-code.md) | JSON Lines transcript, subagents in separate files | 30+ events, global or per project | measured on one machine (2.1.296); converter exists |
 | [Codex CLI](codex.md) | JSON Lines rollouts | none for tool calls found yet; a `notify` setting to check | reported |
 | [OpenCode](opencode.md) | SQLite, older versions JSON files | server plugins (v2 docs) | documented and reported |
-| [Antigravity CLI](antigravity.md) | JSON Lines transcripts, truncated and full | SDK hooks; CLI hooks to check | reported |
+| [Antigravity CLI](antigravity.md) | JSON Lines transcripts, truncated and full | SDK hooks; CLI hooks to check | measured on one machine (1.5.18); converter exists |
+| [Grok CLI](grok.md) | JSON Lines chat history, timed telemetry | documented in its user guide | measured on one machine (1.0.92); converter exists |
 
 None of these converters is finished. The tool-to-kind tables marked
 unverified are a starting point: confirm every row against a real transcript

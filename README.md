@@ -93,6 +93,6 @@ skills describe also works with `jq` and `grep`.
 ## Status
 
 Version 0.1, a draft. The format, schemas, tools and conformance suite are
-consistent with each other and tested. Claude Code, Codex and OpenCode
-converters are available. The notes in `adapters/` say for each harness what has been checked
+consistent with each other and tested. Antigravity, Claude Code, Codex,
+Grok and OpenCode converters are available. The notes in `adapters/` say for each harness what has been checked
 against real files and what has not.
