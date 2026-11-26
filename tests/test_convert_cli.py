@@ -27,8 +27,8 @@ def toy(path, native_id="constructed-session"):
     return path
 
 
-def test_registry_starts_empty():
-    assert REGISTRY == {}
+def test_registry_has_codex():
+    assert "codex" in REGISTRY
 
 
 def test_unknown_harness_is_clear_and_exits_two(capsys):
