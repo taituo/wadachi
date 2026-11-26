@@ -61,6 +61,10 @@ def self_id() -> str | None:
     return os.environ.get("CODEX_THREAD_ID") or os.environ.get("CODEX_SESSION_ID")
 
 
+def caller_present() -> bool:
+    return bool(os.environ.get("CODEX_TOOL_CALL_ID"))
+
+
 def _position(offset, rec):
     p = rec.get("payload", {})
     if rec.get("type") == "response_item" and isinstance(p.get("id"), str) and p["id"]:

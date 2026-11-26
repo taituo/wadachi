@@ -242,3 +242,47 @@ def test_unknown_harness_and_conflicting_selectors_exit_two(setup):
     with pytest.raises(SystemExit) as exc:
         main(["dump", "--self", "--from-herdr"])
     assert exc.value.code == 2
+
+
+def test_selection_keeps_distinct_native_ids_when_paths_are_shared(setup, tmp_path, monkeypatch, capsys):
+    adapter, store = setup
+    path = adapter.paths[0]
+    adapter.discover = lambda: [base.DiscoveredSession("constructed-one", path, 1), base.DiscoveredSession("constructed-two", path, 1)]
+    monkeypatch.setenv("CONSTRUCTED_SELF_ID", "constructed-two")
+    seen = []
+
+    def selected(found):
+        seen.extend(s.native_id for s in found)
+        for s in found:
+            yield base.SessionInput([base.Source("f1", path, "record", adapter.SOURCE_FORMAT)], native_id=s.native_id,
+                                    header={"x": {"fixture": {"constructed": True}}})
+
+    adapter.selected_sessions = selected
+    assert dumping.dump(store, self_only=True) == 0
+    assert seen == ["constructed-two"]
+    assert capsys.readouterr() == ("constructed: converted=1 skipped=0 failed=0\n", "")
+
+
+def test_unqualified_self_does_not_dump_a_peer_harness_fallback(setup, tmp_path, monkeypatch, capsys):
+    adapter, store = setup
+    other = Constructed([rollout(tmp_path / "constructed-peer.jsonl", "constructed-peer")])
+    other.HARNESS = "constructed-peer"
+    other.self_id = lambda: None
+    monkeypatch.setitem(REGISTRY, other.HARNESS, other)
+    monkeypatch.setenv("CONSTRUCTED_SELF_ID", "constructed-one")
+    assert dumping.dump(store, self_only=True) == 0
+    assert other.mapped == 0
+    assert capsys.readouterr() == ("constructed: converted=1 skipped=0 failed=0\n", "")
+
+
+def test_unqualified_self_without_a_session_id_uses_caller_marker(setup, tmp_path, monkeypatch, capsys):
+    adapter, store = setup
+    monkeypatch.chdir(tmp_path)
+    rollout(adapter.paths[0], "constructed-one", str(tmp_path))
+    adapter.caller_present = lambda: True
+    other = Constructed([])
+    other.HARNESS = "constructed-peer"
+    monkeypatch.setitem(REGISTRY, other.HARNESS, other)
+    assert dumping.dump(store, self_only=True) == 0
+    assert "--self fallback" in capsys.readouterr().err
+    assert other.mapped == 0
