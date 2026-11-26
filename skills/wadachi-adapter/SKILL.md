@@ -75,6 +75,11 @@ section 4.2). Things that are easy to get wrong:
   subagents report back through a separate message. Set `text_origin` from a
   fixed per-tool table: `tool`, `model` or `agent`. Leave it out when unsure.
   A child's hand-back report is a `subagent_end` with `text`.
+- **What the model was given.** System prompts, instructions files,
+  environment blocks, tool and skill listings and reminders the harness adds
+  are `context` events (SPEC.md 4.6), one per recorded piece, with the
+  harness's own `name` and `role`. Use the text the harness recorded giving
+  the model; never render a structured record into text yourself.
 - **Usage and cost.** Token counts go in `usage` events; harness-specific cost
   units go under `x.<harness>`, as strings if they are not integers.
 

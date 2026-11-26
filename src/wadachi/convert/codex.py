@@ -12,7 +12,7 @@ from . import base
 
 HARNESS = "codex"
 SOURCE_FORMAT = "codex-rollout-jsonl"
-CONVERTER = {"name": "wadachi-codex", "version": "0.1.2"}
+CONVERTER = {"name": "wadachi-codex", "version": "0.2.0"}
 # The outer exec tool runs JavaScript, not a shell. Inner commands have their
 # own CommandExecution records. Do not classify JavaScript by its contents.
 KINDS = {"exec": "other", "wait": "other", "sleep": "other", "request_user_input_async": "other",
@@ -242,20 +242,24 @@ class _Session:
         if pt == "message":
             role = p.get("role")
             content = p.get("content", [])
+            kinds = p.get("internal_chat_message_metadata_passthrough", {}).get("content_item_kinds")
             if role == "user":
-                kinds = p.get("internal_chat_message_metadata_passthrough", {}).get("content_item_kinds")
                 user_input = isinstance(kinds, list) and any(k in ("user.text", "user.image") for k in kinds)
                 goal = isinstance(kinds, list) and "goal.internal_context" in kinds and not user_input
+                # Blocks of other kinds (environment, instructions) are context the harness added.
+                context = self._context(offset, rec, role, content, kinds,
+                                        lambda k: k not in ("user.text", "user.image", "goal.internal_context"))
                 if isinstance(kinds, list) and not user_input and not goal:
-                    return []
+                    return context
                 text_kind = "goal.internal_context" if goal else "user.text"
                 texts = [b["text"] for i, b in enumerate(content)
                          if isinstance(b, dict) and isinstance(b.get("text"), str)
                          and (not isinstance(kinds, list) or i < len(kinds) and kinds[i] == text_kind)]
                 turn = p.get("internal_chat_message_metadata_passthrough", {}).get("turn_id")
-                return self._prompt(offset, rec, p, texts[0] if len(texts) == 1 else None, turn, goal=goal)
+                return context + self._prompt(offset, rec, p, texts[0] if len(texts) == 1 else None, turn, goal=goal)
             if role != "assistant":
-                return []
+                # Developer and system messages: instructions the harness sends the model.
+                return self._context(offset, rec, role, content, kinds, lambda k: True)
             return [self._event(offset, rec, "assistant_text", "agent", {"text": b["text"]}, f"#/payload/content/{i}")
                     for i, b in enumerate(content) if isinstance(b, dict) and isinstance(b.get("text"), str)]
         if pt == "reasoning":
@@ -295,6 +299,25 @@ class _Session:
                 event["of_src"] = "f1:" + self.calls[p["call_id"]]
             return [event]
         return []
+
+    def _context(self, offset, rec, role, content, kinds, wanted):
+        """One context event per content block whose recorded kind is wanted."""
+        if not isinstance(content, list) or (role == "user" and not isinstance(kinds, list)):
+            return []
+        events = []
+        for i, b in enumerate(content):
+            kind = kinds[i] if isinstance(kinds, list) and i < len(kinds) and isinstance(kinds[i], str) else None
+            if not isinstance(b, dict) or (role == "user" and (kind is None or not wanted(kind))):
+                continue
+            data = {}
+            if kind is not None:
+                data["name"] = kind
+            if isinstance(role, str):
+                data["role"] = role
+            if isinstance(b.get("text"), str):
+                data["text"] = b["text"]
+            events.append(self._event(offset, rec, "context", "harness", data, f"#/payload/content/{i}"))
+        return events
 
     def _item(self, offset, rec, p):
         item = p.get("item", {})

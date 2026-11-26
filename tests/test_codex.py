@@ -198,7 +198,8 @@ def test_duplicate_response_user_and_context_are_not_extra_prompts(convert_rows)
                  internal_chat_message_metadata_passthrough={"content_item_kinds": ["environments.environment_context"]}),
         user(),
     ])
-    assert len(lines) == 2 and lines[1]["type"] == "prompt"
+    assert [e["type"] for e in lines[1:]] == ["prompt", "context"]
+    assert lines[2]["data"] == {"name": "environments.environment_context", "role": "user", "text": "Invented environment."}
 
 
 def test_live_response_input_does_not_wait_for_a_ui_copy(convert_rows):
@@ -219,7 +220,18 @@ def test_user_text_is_selected_without_joining_instruction_blocks(convert_rows):
         {"type": "input_text", "text": "Invented environment."}, {"type": "input_text", "text": "Invented user prompt."}],
         internal_chat_message_metadata_passthrough={"turn_id": "constructed-turn",
                                                    "content_item_kinds": ["environments.environment_context", "user.text"]})])
-    assert lines[1]["data"] == {"text": "Invented user prompt."}
+    assert [e["type"] for e in lines[1:]] == ["context", "prompt"]
+    assert lines[1]["data"]["name"] == "environments.environment_context" and lines[1]["src"].endswith("#/payload/content/0")
+    assert lines[2]["data"] == {"text": "Invented user prompt."}
+
+
+def test_developer_instructions_are_context(convert_rows):
+    lines = convert_rows([response("message", "constructed-dev", role="developer", content=[
+        {"type": "input_text", "text": "Invented instructions."}, {"type": "input_text", "text": "Invented skills."}])])
+    assert [(e["type"], e["actor"], e["data"]) for e in lines[1:]] == [
+        ("context", "harness", {"role": "developer", "text": "Invented instructions."}),
+        ("context", "harness", {"role": "developer", "text": "Invented skills."})]
+    assert "skipped_records" not in lines[0].get("x", {}).get("codex", {})
 
 
 def test_old_response_prompt_and_headless_actor(convert_rows):

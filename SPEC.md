@@ -171,6 +171,7 @@ Optional:
 | `interrupt` | human, caller, harness | `reason` |
 | `permission` | human, caller, harness, hook | `decision` (`asked`, `allowed`, `denied`), `rule` |
 | `compaction` | harness | `before_tokens`, `after_tokens`, `text` (the summary the harness wrote) |
+| `context` | harness | `name`, `role`, `text`, `text_truncated`: content the harness itself put into the model's input (section 4.6) |
 | `subagent_start` | agent, harness | `session` (the child's session id), `agent` |
 | `subagent_end` | agent, harness | `session`, `reason`, `text` (the report the child handed back, as the parent received it), `text_truncated`, `text_origin` |
 | `setting` | harness | `model`, `cwd`, `effort`: a change during the session |
@@ -272,6 +273,32 @@ without trailing zeros, left out when it is zero: `2026-11-23T18:02:11.204Z`,
 - A leap second exists only as `23:59:60` in UTC, and is kept as written. In
   arithmetic, such as a digest's duration, it counts as the second after
   `:59`.
+
+### 4.6 Context
+
+A model answers from what is in its input, and much of that input is neither
+the human's nor the model's: a system prompt, instructions files, the
+environment, tool and skill listings, reminders, the output of a local
+command. A `context` event records one such piece, as the harness recorded it.
+It is what lets a reader see what the model was given, not only what was said.
+
+- `name` is the harness's own name for the piece, as recorded (an attachment
+  type, a content kind). It is left out when the harness gives none.
+- `role` is the role the piece had in the model's input, as recorded, such as
+  `system`, `developer` or `user`. It is left out when not recorded.
+- `text` is the text exactly as the harness recorded giving it to the model.
+  A piece recorded only in a structured form keeps that form in `raw`, without
+  `text`; a converter never renders one itself.
+- A piece recorded in several parts, such as a system prompt kept as a list of
+  sections, is one event per part, each with its own pointer.
+- `context` events do not start turns and are not counted in digests.
+- `manifest` and `context` differ: a `manifest` describes the input at the
+  start by its hash and size, `context` holds its pieces.
+
+Context can hold what the person never typed and would not expect to find in
+a record, such as an account's e-mail address, and it is often large. It is
+part of the base like any other event; views given to a model or exported
+apply the `secrets` layer (section 13).
 
 ## 5. Order
 

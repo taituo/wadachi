@@ -43,10 +43,10 @@ def test_parent_events():
     assert header["native_id"] == PARENT_NID and header["mode"] == "interactive"
     assert header["model"] == "constructed-model-1"
     assert [(e["type"], e["actor"]) for e in events] == [
-        ("setting", "harness"), ("prompt", "human"), ("reasoning", "agent"), ("tool_call", "agent"),
+        ("setting", "harness"), *[("context", "harness")] * 5, ("prompt", "human"), ("reasoning", "agent"), ("tool_call", "agent"),
         ("usage", "harness"), ("permission", "harness"), ("tool_result", "tool"), ("subagent_end", "agent"),
         ("assistant_text", "agent"), ("usage", "harness"),
-        ("prompt", "human"),
+        ("prompt", "human"), ("context", "harness"), ("context", "harness"),
         ("prompt", "human"), ("tool_call", "agent"), ("tool_call", "agent"), ("usage", "harness"),
         ("tool_result", "tool"), ("tool_result", "tool"), ("interrupt", "human"),
         ("prompt", "human"), ("error", "harness"), ("usage", "harness")]
@@ -74,7 +74,8 @@ def test_parent_events():
     assert not any(t.startswith("<local-command") for t in texts)
     assert by_type["prompt"][1]["how"] == {"actor": "inferred:interactive-entrypoint"}
     skipped = header["x"]["claude-code"]["skipped_records"]
-    assert skipped["queue-operation"] == 1 and skipped["user"] == 2
+    assert skipped["queue-operation"] == 1 and "user" not in skipped
+    assert header["x"]["claude-code"]["cost_state"]["totalCostUSD"] == "0.25"
     # is_error is a recorded status, not an exit code, so it does not mark the call failed.
     assert [d for _, d in digests(events)][2] == "t3 h20 r1 f1 x 3s"
 
@@ -157,3 +158,24 @@ def test_agent_result_origin(tmp_path, handback, origin):
     path.write_text("".join(json.dumps(r) + "\n" for r in rows))
     data = base.convert(cc, path)[-1]["data"]
     assert data.get("text_origin") == origin
+
+
+def test_context_is_what_the_model_was_given():
+    events = convert(PARENT)[1:]
+    context = [e for e in events if e["type"] == "context"]
+    assert [(e["data"].get("name"), e["data"].get("role"), e["data"].get("text")) for e in context] == [
+        ("model", "system", "Invented model note."),
+        ("date", "system", "Invented date line."),
+        ("session_context", "user", "Invented contact line."),
+        ("prompt_snapshot", "system", "Invented system section one."),
+        ("prompt_snapshot", "system", "Invented system section two."),
+        (None, "user", "<local-command-stdout>Invented output</local-command-stdout>"),
+        (None, "user", "<local-command-caveat>Invented caveat</local-command-caveat>")]
+    # The rest of a record is kept once, not on every section.
+    assert "systemPrompt" not in context[3]["raw"]["attachment"] and "attachment" not in context[4].get("raw", {})
+    assert "rendered" not in context[1]["raw"] and context[1]["raw"]["attachment"]["type"] == "date"
+    # The setting from the model attachment keeps the record; its context part does not repeat it.
+    assert "raw" not in context[0] or set(context[0]["raw"]) <= {"timestamp"}
+    # Context starts no turn and is not in digests.
+    assert all(e["turn"] == 0 for e in context[:5])
+    assert [d for _, d in digests(events)][0].startswith("t1 h20 a1")

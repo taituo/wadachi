@@ -27,6 +27,9 @@
     "invalid/byte-order-mark.jsonl": [
       "encoding"
     ],
+    "invalid/context-not-from-harness.jsonl": [
+      "schema"
+    ],
     "invalid/crlf-line-endings.jsonl": [
       "encoding"
     ],

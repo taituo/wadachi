@@ -8,13 +8,14 @@ from collections import Counter
 from pathlib import Path
 
 from wadachi import dumps, session_id
+from wadachi.canonical import ecmascript_number
 from wadachi.ids import escape_key
 from . import base
 
 HARNESS = "claude-code"
 SOURCE_FORMAT = "claude-code-jsonl"
 META_FORMAT = "claude-code-subagent-meta-json"
-CONVERTER = {"name": "wadachi-claude-code", "version": "0.1.1"}
+CONVERTER = {"name": "wadachi-claude-code", "version": "0.2.0"}
 SELF_FROM_HERDR = True
 META_KEY = "f3"  # f2 stays reserved for a hook log
 
@@ -146,6 +147,21 @@ def _text_of(content):
     return None
 
 
+def a_without(value, names):
+    return {k: v for k, v in value.items() if k not in names} if isinstance(value, dict) else value
+
+
+def _plain_numbers(value):
+    """Harness-specific numbers that are not integers become strings (SKILL: cost units)."""
+    if isinstance(value, float):
+        return ecmascript_number(value)
+    if isinstance(value, dict):
+        return {k: _plain_numbers(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_plain_numbers(v) for v in value]
+    return value
+
+
 def _integer(data, name, value):
     if isinstance(value, int) and not isinstance(value, bool):
         data[name] = value
@@ -255,8 +271,15 @@ class _Session:
                 elif label == "system":
                     label += "/" + str(rec.get("subtype"))
                 probe.skipped[label] += 1
+        x = {}
+        cost = [r for _, r in self.records if r.get("type") == "cost-state"]
+        if cost:
+            # Totals are cumulative; the last record is the session's latest state.
+            x["cost_state"] = _plain_numbers({k: v for k, v in cost[-1].items() if k not in ("type", "sessionId")})
         if probe.skipped:
-            header["x"] = {HARNESS: {"skipped_records": dict(sorted(probe.skipped.items()))}}
+            x["skipped_records"] = dict(sorted(probe.skipped.items()))
+        if x:
+            header["x"] = {HARNESS: x}
         return header
 
     def _input(self, offset, rec, text, pointer="", typ="prompt"):
@@ -279,10 +302,18 @@ class _Session:
         fields = {"how": how} if how else {}
         return [self._event(offset, rec, typ, actor, data, pointer, **fields)]
 
+    def _harness_user(self, offset, rec, content):
+        """User-role text the harness wrote itself: in the model's input, not the human's."""
+        data = {"role": "user"}
+        text = _text_of(content)
+        if text is not None:
+            data["text"] = text
+        return [self._event(offset, rec, "context", "harness", data)]
+
     def _user(self, offset, rec, m):
-        if rec.get("isMeta") is True:
-            return []
         content = m.get("content")
+        if rec.get("isMeta") is True:
+            return self._harness_user(offset, rec, content)
         if rec.get("isCompactSummary") is True:
             data = {}
             text = _text_of(content)
@@ -291,7 +322,7 @@ class _Session:
             return [self._event(offset, rec, "compaction", "harness", data)]
         if isinstance(content, str):
             if content.startswith(HARNESS_TEXT):
-                return []
+                return self._harness_user(offset, rec, content)
             if content in INTERRUPTS:
                 return [self._event(offset, rec, "interrupt", "human", {"reason": content},
                                     how={"type": "inferred:interrupt-marker"})]
@@ -410,13 +441,64 @@ class _Session:
             events.append(self._event(offset, rec, "usage", "harness", data, "#/message/usage"))
         return events
 
+    def _rendered(self, offset, rec, name, first_raw=True):
+        """One context event per rendered block: the text the model was given."""
+        blocks = rec.get("rendered")
+        if not isinstance(blocks, list):
+            return []
+        texts = [_text_of(b.get("content")) if isinstance(b, dict) else None for b in blocks]
+        events = []
+        for i, b in enumerate(blocks):
+            data = {"name": name} if isinstance(name, str) else {}
+            if isinstance(rec.get("renderedRole"), str):
+                data["role"] = rec["renderedRole"]
+            if texts[i] is not None:
+                data["text"] = texts[i]
+            event = self._event(offset, rec, "context", "harness", data, f"#/rendered/{i}")
+            raw = event.pop("raw", {})
+            if i == 0 and first_raw:
+                # The record's other fields, once; rendered text is in data.
+                mapped = all(t is not None for t in texts)
+                kept = {k: v for k, v in raw.items() if not (mapped and k == "rendered")}
+            else:
+                kept = {k: v for k, v in raw.items() if k == "timestamp"}
+            if kept:
+                event["raw"] = kept
+            events.append(event)
+        return events
+
+    def _snapshot(self, offset, rec, a):
+        """The system prompt as recorded: one event per section."""
+        sections = a.get("systemPrompt")
+        if not isinstance(sections, list):
+            return []
+        events = []
+        for i, part in enumerate(sections):
+            data = {"name": "prompt_snapshot", "role": "system"}
+            if isinstance(part, str):
+                data["text"] = part
+            extra = {"attachment": a_without(a, ("systemPrompt",))} if i == 0 else None
+            event = self._event(offset, rec, "context", "harness", data, f"#/attachment/systemPrompt/{i}",
+                                raw_extra=extra)
+            if i:
+                event["raw"] = {k: v for k, v in event.get("raw", {}).items() if k == "timestamp"}
+                if not event["raw"]:
+                    event.pop("raw")
+            elif "attachment" in event.get("raw", {}) and not event["raw"]["attachment"]:
+                event["raw"].pop("attachment")
+            events.append(event)
+        return events
+
     def _attachment(self, offset, rec, a):
         typ = a.get("type")
+        if typ == "prompt_snapshot":
+            return self._snapshot(offset, rec, a)
         if typ == "model":
             model = (a.get("identity") or {}).get("modelId")
-            return [self._event(offset, rec, "setting", "harness", {"model": model} if isinstance(model, str) else {})]
+            setting = self._event(offset, rec, "setting", "harness", {"model": model} if isinstance(model, str) else {})
+            return [setting] + self._rendered(offset, rec, typ, first_raw=False)
         if typ != "queued_command":
-            return []
+            return self._rendered(offset, rec, typ)
         origin = a.get("origin") if isinstance(a.get("origin"), dict) else {}
         text = a.get("prompt") if isinstance(a.get("prompt"), str) else None
         if origin.get("kind") == "peer" and origin.get("handback") is True:

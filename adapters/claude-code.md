@@ -29,7 +29,7 @@ written by Claude Code 2.1.296. That is a small corpus. Rows marked
 | The `Agent` tool can run a subagent in **hand-back** mode: the tool result is a harness note (`toolUseResult.handback: "send"`, `handbackReport`, `agentId`), and the report arrives later as an `attachment` of type `queued_command` whose `origin` is `{"kind": "peer", "from": <agent id>, "handback": true, "body": …}` | measured (2.1.296) |
 | The same hand-back appears as a `queue-operation` pair (`enqueue`, then `remove` with reason `absorbed_mid_turn`) | measured (2.1.296) |
 | API failures are `assistant` lines with `isApiErrorMessage: true` and `error` (for example `authentication_failed`) | measured (2.1.296) |
-| `attachment` lines carry injected context: `prompt_snapshot` (the full system prompt), `environment`, `model`, `date`, `session_context` (which includes the account's email address), `deferred_tools_delta`, `agent_listing_delta`, `skill_listing`, `mcp_instructions_delta`, `total_tokens_reminder`, `remote_session_change`, `credential_org`, `plan_mode` | measured (2.1.296) |
+| `attachment` lines carry injected context, with the exact text the model was given in `rendered` (a list of `{content}` blocks) and its role in `renderedRole` (`system` or `user`): `prompt_snapshot` (the full system prompt), `environment`, `model`, `date`, `session_context` (which includes the account's email address), `deferred_tools_delta`, `agent_listing_delta`, `skill_listing`, `mcp_instructions_delta`, `total_tokens_reminder`, `remote_session_change`, `credential_org`, `plan_mode` | measured (2.1.296) |
 | `system` lines seen: `turn_duration`, `away_summary` | measured (2.1.296) |
 | Compaction writes a `system` line with subtype `compact_boundary` and `compactMetadata.preTokens`, followed by a `user` line with `isCompactSummary: true` | reported; not in this corpus |
 | An interrupt is a user text `[Request interrupted by user]` or `[Request interrupted by user for tool use]` | reported; not in this corpus |
@@ -57,8 +57,8 @@ counted by type in `x.claude-code.skipped_records`.
 | `user`, string content, `origin.kind` `human` | `prompt`, actor human | measured (2.1.296) |
 | `user`, string content, other `origin.kind` | `prompt`, actor caller | not measured |
 | `user`, string content, no `origin` | `prompt`; actor human with `how: inferred:interactive-entrypoint` when `entrypoint` is `cli`, caller with `inferred:non-interactive-entrypoint` otherwise, caller with `inferred:subagent-task` in a subagent | measured (2.1.296) |
-| `user` with `isMeta: true` | none | measured (2.1.296) |
-| `user` text starting `<local-command-stdout>`, `<local-command-stderr>` or `<local-command-caveat>` | none: written by the harness | measured (2.1.296) for stdout and caveat |
+| `user` with `isMeta: true` | `context`, role `user`: harness text the model was given (caveats, reminders) | measured (2.1.296) |
+| `user` text starting `<local-command-stdout>`, `<local-command-stderr>` or `<local-command-caveat>` | `context`, role `user`: written by the harness, not a prompt | measured (2.1.296) for stdout and caveat |
 | `user` text that is exactly an interrupt marker | `interrupt`, actor human, `how: inferred:interrupt-marker` | reported |
 | `user` with `isCompactSummary: true` | `compaction` with the summary as `text` | reported |
 | `user`, `tool_result` block | `tool_result` linked by `tool_use_id`; `text` when the content is a string or one text block; `is_error` as `status_as_recorded`; no `exit_code` (none recorded) | measured (2.1.296) |
@@ -70,11 +70,14 @@ counted by type in `x.claude-code.skipped_records`.
 | `assistant`, `tool_use` block | `tool_call`: `tool`, `kind`, `call_id`, `args` as recorded, `paths` per the table below | measured (2.1.296) |
 | `assistant`, last line of a `message.id` | `usage` from `message.usage` | measured (2.1.296) |
 | `assistant` with `isApiErrorMessage: true` | `error`, actor harness, `code` from `error`, `text` from the message | measured (2.1.296) |
-| `attachment` `model` | `setting` with `model` | measured (2.1.296) |
+| `attachment` `model` | `setting` with `model`, and its rendered text as `context` | measured (2.1.296) |
+| `attachment` with `rendered` (all other types except `queued_command`) | `context`, one per rendered block: `name` the attachment type, `role` from `renderedRole`, `text` the block's `content`; the attachment's structured fields in `raw` once | measured (2.1.296) |
+| `attachment` `prompt_snapshot` | `context`, one per `systemPrompt` section, role `system`; the rest of the snapshot (tool list, rendering settings) in `raw` of the first | measured (2.1.296) |
 | `attachment` `queued_command`, `origin.kind` `peer` and `handback` | `subagent_end`, actor agent: `text` is the delivered `prompt`, `text_origin: agent`, `session` the child's id, `of` the `Agent` call whose result recorded the same `agentId` (`how: inferred:agent-id-matches-tool-result`) | measured (2.1.296) |
 | `attachment` `queued_command`, `origin.kind` `human` | `steer`, actor human | not measured |
-| other `attachment` types | none | measured (2.1.296) |
+| `attachment` without `rendered`, such as `credential_org` | none: not given to the model | measured (2.1.296) |
 | `system` `compact_boundary` | `compaction`, `before_tokens` from `compactMetadata.preTokens` | reported |
+| `cost-state` | none; the last one goes to header `x.claude-code.cost_state`, numbers that are not integers as strings | measured (2.1.296) |
 | other `system` subtypes, bookkeeping records, `queue-operation` | none | measured (2.1.296) |
 
 ## Tools to kinds
@@ -96,10 +99,11 @@ counted by type in `x.claude-code.skipped_records`.
 ## Privacy
 
 A transcript holds more than the conversation: the full system prompt
-(`prompt_snapshot`), the account's email address (`session_context`) and the
-organization id. The converter maps none of these to events, but the raw file
-is still the truth (SPEC.md section 13): treat a store made with
-`--keep-raw` like the transcripts themselves.
+(`prompt_snapshot`), the account's e-mail address (`session_context`) and the
+organization id. Since converter 0.2.0 the first two are `context` events,
+because the model was given them; the organization id is not. Treat a store
+like the transcripts themselves, and apply the `secrets` layer to anything
+given to a model or exported (SPEC.md section 13).
 
 ## Known gaps
 

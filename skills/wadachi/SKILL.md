@@ -46,7 +46,7 @@ Compressed sessions (`.jsonl.zst`) read the same way through `zstdcat`:
 
 | Field | Meaning |
 |---|---|
-| `type` | `prompt`, `assistant_text`, `reasoning`, `tool_call`, `tool_result`, `steer`, `interrupt`, `permission`, `compaction`, `subagent_start`, `subagent_end`, `setting`, `usage`, `observation`, `manifest`, `error`, `session_end` |
+| `type` | `prompt`, `assistant_text`, `reasoning`, `tool_call`, `tool_result`, `steer`, `interrupt`, `permission`, `compaction`, `context`, `subagent_start`, `subagent_end`, `setting`, `usage`, `observation`, `manifest`, `error`, `session_end` |
 | `actor` | `human`, `caller` (a program or agent driving the session), `agent`, `harness`, `tool`, `hook` |
 | `turn` | counts the prompts so far; 0 before the first |
 | `of` | the earlier event this one answers or observes; a result's `of` is its call |

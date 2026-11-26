@@ -279,6 +279,7 @@
             "interrupt",
             "permission",
             "compaction",
+            "context",
             "subagent_start",
             "subagent_end",
             "setting",
@@ -689,6 +690,45 @@
                   },
                   "text": {
                     "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "context"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "actor": {
+                "enum": [
+                  "harness"
+                ]
+              },
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "role": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  },
+                  "text_truncated": {
+                    "type": "boolean"
                   }
                 }
               }
