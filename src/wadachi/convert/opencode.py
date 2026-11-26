@@ -16,7 +16,9 @@ from . import base
 
 HARNESS = "opencode"
 SOURCE_FORMAT = "opencode-session-sqlite/1"
-CONVERTER = {"name": "wadachi-opencode", "version": "0.2.0", "measured": ["1.19.6"]}
+CONVERTER = {"name": "wadachi-opencode", "version": "0.2.0",
+             # Session versions in the 145-session corpus PR #3 was audited on.
+             "measured": ["1.18.30", "1.18.31", "1.18.32", "1.18.33", "1.18.35", "1.19.4", "1.19.6"]}
 SELF_FROM_HERDR = True
 KINDS = {"read": "read", "write": "write", "edit": "edit", "apply_patch": "edit", "bash": "shell",
          "glob": "search", "grep": "search", "webfetch": "fetch", "websearch": "fetch", "task": "subagent",
