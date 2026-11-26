@@ -72,7 +72,16 @@ pip install git+https://github.com/taituo/wadachi
 
 wadachi validate examples/store
 wadachi digest examples/store/sessions/s_e6468e8dce041668.jsonl
+
+wadachi convert codex --list
+wadachi dump --harness codex
+wadachi dump --self --keep-raw
 ```
+
+`dump` discovers sessions and skips unchanged source hashes. Its store defaults
+to `$WADACHI_STORE` or `~/.wadachi/store`. `--from-herdr` selects the session ids
+in Herdr's live snapshot. It prints counts, never session content. A store
+inside a git working tree requires `--allow-inside-git`.
 
 Python 3.10 or later; the only dependency is `jsonschema`. Everything the
 skills describe also works with `jq` and `grep`.
@@ -80,6 +89,6 @@ skills describe also works with `jq` and `grep`.
 ## Status
 
 Version 0.1, a draft. The format, schemas, tools and conformance suite are
-consistent with each other and tested. No converter is finished yet; the notes
-in `adapters/` say for each harness what has been checked against real files
-and what has not.
+consistent with each other and tested. The Codex converter is available; the
+notes in `adapters/` say for each harness what has been checked against real
+files and what has not.
