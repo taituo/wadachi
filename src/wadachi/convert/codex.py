@@ -12,7 +12,7 @@ from . import base
 
 HARNESS = "codex"
 SOURCE_FORMAT = "codex-rollout-jsonl"
-CONVERTER = {"name": "wadachi-codex", "version": "0.1.1"}
+CONVERTER = {"name": "wadachi-codex", "version": "0.1.2"}
 # The outer exec tool runs JavaScript, not a shell. Inner commands have their
 # own CommandExecution records. Do not classify JavaScript by its contents.
 KINDS = {"exec": "other", "wait": "other", "sleep": "other", "request_user_input_async": "other",
@@ -171,7 +171,7 @@ class _Session:
             header["x"] = {HARNESS: {"skipped_records": dict(probe.skipped)}}
         return header
 
-    def _prompt(self, offset, rec, p, text, turn):
+    def _prompt(self, offset, rec, p, text, turn, goal=False):
         # task_started precedes even the first prompt. Active alone is not steer.
         key = turn if turn is not None else self.active_turn
         if key is None:
@@ -181,8 +181,12 @@ class _Session:
         self.prompted.add(key)
         data = {}
         _text(data, text)
-        fields = {"how": {"type": "inferred:shared-turn-user-message"}} if typ == "steer" else {}
-        return [self._event(offset, rec, typ, self.actor, data, **fields)]
+        how = {"type": "inferred:shared-turn-user-message"} if typ == "steer" else {}
+        if goal:
+            how.setdefault("type", "inferred:goal-context-input")
+            how["actor"] = "inferred:goal-context-input"
+        fields = {"how": how} if how else {}
+        return [self._event(offset, rec, typ, "caller" if goal else self.actor, data, **fields)]
 
     def map_record(self, offset, rec):
         typ, p = rec.get("type"), rec.get("payload", {})
@@ -236,13 +240,16 @@ class _Session:
             content = p.get("content", [])
             if role == "user":
                 kinds = p.get("internal_chat_message_metadata_passthrough", {}).get("content_item_kinds")
-                if isinstance(kinds, list) and not any(k in ("user.text", "user.image") for k in kinds):
+                user_input = isinstance(kinds, list) and any(k in ("user.text", "user.image") for k in kinds)
+                goal = isinstance(kinds, list) and "goal.internal_context" in kinds and not user_input
+                if isinstance(kinds, list) and not user_input and not goal:
                     return []
+                text_kind = "goal.internal_context" if goal else "user.text"
                 texts = [b["text"] for i, b in enumerate(content)
                          if isinstance(b, dict) and isinstance(b.get("text"), str)
-                         and (not isinstance(kinds, list) or i < len(kinds) and kinds[i] == "user.text")]
+                         and (not isinstance(kinds, list) or i < len(kinds) and kinds[i] == text_kind)]
                 turn = p.get("internal_chat_message_metadata_passthrough", {}).get("turn_id")
-                return self._prompt(offset, rec, p, texts[0] if len(texts) == 1 else None, turn)
+                return self._prompt(offset, rec, p, texts[0] if len(texts) == 1 else None, turn, goal=goal)
             if role != "assistant":
                 return []
             return [self._event(offset, rec, "assistant_text", "agent", {"text": b["text"]}, f"#/payload/content/{i}")

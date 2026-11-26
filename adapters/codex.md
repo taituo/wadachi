@@ -27,6 +27,7 @@ in a resumed file. Files can outlive the executable that created them.
 | Each outer record has its own `timestamp`; every measured timestamp has a UTC zone | measured (codex-cli 0.154.0, 0.157.1, 0.160.1, 0.162.1, 0.163.0, 0.164.0, 0.167.1) |
 | `response_item` message blocks have `type` and `text`; metadata has `content_item_kinds` and `turn_id` | measured (codex-cli 0.154.0, 0.157.1, 0.160.1, 0.162.1, 0.163.0, 0.164.0, 0.167.1) |
 | User input is marked `user.text` or `user.image`; environment and instruction blocks have other kinds | measured (codex-cli 0.154.0, 0.157.1, 0.160.1, 0.162.1, 0.163.0, 0.164.0, 0.167.1) |
+| Automated goal input is a user-role message marked `goal.internal_context`, with the active task's `turn_id`; four such records were found | measured (codex-cli 0.157.1) |
 | UI `UserMessage` items carry `turn_id`, `content` and `client_id`; multiple user messages can share a turn id | measured (codex-cli 0.154.0, 0.157.1, 0.160.1, 0.162.1, 0.163.0, 0.164.0, 0.167.1) |
 | `function_call.arguments` is a JSON-encoded string | measured (codex-cli 0.154.0, 0.157.1, 0.162.1, 0.163.0, 0.167.1) |
 | `custom_tool_call.input` is a string; outer `exec` calls contain JavaScript | measured (codex-cli 0.154.0, 0.157.1, 0.160.1, 0.162.1, 0.163.0, 0.167.1) |
@@ -55,6 +56,7 @@ Records without events are counted by type in `x.codex.skipped_records`.
 | `turn_context` | `setting`, with recorded model, cwd and effort | measured (codex-cli 0.154.0, 0.157.1, 0.160.1, 0.162.1, 0.163.0, 0.164.0, 0.167.1) |
 | `world_state` | `setting`; only string model values map, other state stays in raw | measured (codex-cli 0.154.0, 0.157.1, 0.160.1, 0.162.1, 0.163.0, 0.164.0, 0.167.1) |
 | `response_item/message`, user | `prompt` or `steer`; instruction and environment blocks are excluded by `content_item_kinds` | measured (codex-cli 0.154.0, 0.157.1, 0.160.1, 0.162.1, 0.163.0, 0.164.0, 0.167.1) |
+| `response_item/message`, user, `goal.internal_context` | program input: caller `prompt` for the first input in its recorded turn, otherwise caller `steer` | measured (codex-cli 0.157.1) |
 | `response_item/message`, assistant | one `assistant_text` per text block, each with a pointer | measured (codex-cli 0.154.0, 0.157.1, 0.160.1, 0.162.1, 0.163.0, 0.164.0, 0.167.1) |
 | `response_item/message`, other roles | counted, not reclassified as human input | measured (codex-cli 0.154.0, 0.157.1, 0.160.1, 0.162.1, 0.163.0, 0.164.0, 0.167.1) |
 | `response_item/reasoning` | text blocks as `reasoning`; summaries are redacted, encrypted content stays in raw with `redacted: true` | measured (codex-cli 0.154.0, 0.157.1, 0.160.1, 0.162.1, 0.163.0, 0.167.1) |
@@ -103,12 +105,32 @@ tool names stay missing, including on inner shell completion records.
 
 ## Rules and quirks
 
-- `inferred:shared-turn-user-message`: the first user message with a recorded
-  turn id is a prompt; another with the same id is a steer. An active task alone
-  proves nothing: `task_started` precedes the first prompt too. Without a turn
-  id or active task, a user message starts a prompt. This is an inference, not
-  an explicit queued-message flag. Repeated user messages within a turn were
-  measured across the corpus; the individual delivery mechanism is not recorded.
+- `inferred:shared-turn-user-message`: the first mapped input with a recorded
+  turn id is a prompt; another with the same id is a steer. Inputs include
+  human messages and automated goal messages. A queued input with a different
+  id starts its own prompt even while an earlier task remains active. Without
+  an input's own id, the active task id is used. Without either id, the input
+  starts a prompt. This is an inference, not an explicit queued-message flag.
+  Repeated user messages within a turn were measured across the corpus; the
+  individual delivery mechanism is not recorded.
+- `inferred:goal-context-input`: a user-role message whose kinds include
+  `goal.internal_context` but no `user.text` or `user.image` is input from a
+  program continuing a goal. It maps to actor caller, never harness: SPEC.md
+  4.2 allows human and caller prompts. Its first input starts the turn at that
+  record, and its text comes only from the goal-context blocks. Both type and
+  actor are marked inferred on that prompt. A later goal message in the same
+  turn is a caller steer, with the shared-turn type rule and this actor rule.
+  A mixed user-and-goal message keeps the ordinary user actor and user text.
+  This shape was measured in codex-cli 0.157.1; converter 0.1.2 fixes its
+  earlier exclusion. The first real human message after automated work in the
+  same task is therefore a steer. Earlier work, usage and subsequent work
+  remain in the goal's turn, and its digest starts at the recorded goal input.
+- `task_started` alone does not supply a prompt: it precedes normal human
+  prompts too. Completion or abortion closes active-task fallback and never
+  starts a turn. A later input with a new task id starts a new prompt. A task
+  aborted without any recorded input creates no invented prompt. As SPEC.md
+  4.3 requires, settings before the initiating input remain before the turn;
+  raw harness ids are retained, not substituted for derived turn numbers.
 - `inferred:item-id-matches-call`: a completed UI item's id matches a recorded
   response call id. Only then does its result get `of`. This was measured for
   clock extension items in codex-cli 0.157.1 and 0.167.1. No proximity matching
@@ -116,7 +138,8 @@ tool names stay missing, including on inner shell completion records.
 - User inputs appear in both response and UI streams. The response stream is
   primary; per-turn occurrence counts suppress matching UI copies. Assistant
   and reasoning copies are matched by their recorded ids. These duplicate
-  streams were measured in all versions above.
+  streams were measured in all versions above. Goal-context records do not
+  count as human UI copies.
 - The source can keep both an opaque reasoning response and a UI completion;
   neither its text nor a neighbouring timestamp is substituted for the other.
 - Token-count snapshots and request usage records can repeat the same numbers.
@@ -183,3 +206,14 @@ Three rollouts were compared event by event against their sources: 740 events,
 including nine failed shell results and one steer. The comparison checked
 source positions, text, timestamps, arguments, exit status, links, usage,
 turns and skip counts. All fixtures in the test suite are constructed.
+
+Converter 0.1.2 re-converted all 16 rollouts with zero failures and clean
+validation. Comparing 0.1.1 and 0.1.2 on identical source snapshots changed
+existing turn numbers in one session and zero other sessions. Four recorded
+goal inputs became caller prompts. The goal-driven sample was re-checked
+from its initiating input through task completion: all 1,163 mapped events,
+including 195 usage records before the human steer and five after it, remained
+in the goal's turn. The constructed regression includes that sequence and an
+expected full canonical output. Another test compares every mapped record's
+turn to its recorded harness turn id across normal, queued, goal and aborted
+tasks.

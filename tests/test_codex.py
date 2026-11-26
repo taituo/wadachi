@@ -1,11 +1,13 @@
 """Constructed rollout structures. Every content value is invented (WHY: Forge)."""
 
 import json
+from pathlib import Path
 
 import pytest
 
-from wadachi import session_id
+from wadachi import dumps, session_id
 from wadachi.convert import base, codex
+from wadachi.digest import digests
 from wadachi.validate import validate_session
 
 
@@ -48,6 +50,123 @@ def user(rid="constructed-user", text="Invented prompt.", turn="constructed-turn
     record = item("UserMessage", rid, content=[{"type": "text", "text": text, "text_elements": []}])
     record["payload"]["turn_id"] = turn
     return record
+
+
+def input_message(rid, turn, kind="user.text", text="Invented input."):
+    return response("message", rid, role="user", content=[{"type": "input_text", "text": text}],
+                    internal_chat_message_metadata_passthrough={"turn_id": turn, "content_item_kinds": [kind]})
+
+
+@pytest.mark.usefixtures("convert_rows")
+def test_constructed_goal_continuation_matches_expected_output(tmp_path):
+    root = Path(__file__).parent / "fixtures" / "codex"
+    fixture = root / "goal-continuation.constructed.jsonl"
+    inp = base.SessionInput([base.Source("f1", fixture, "record", "constructed-codex-jsonl")],
+                            header={"x": {"fixture": {"constructed": True}}})
+    lines = base.convert(codex, inp)
+    assert validate_session(base.write_session(lines, tmp_path / "store")).problems == []
+    # Only the machine-dependent provenance path differs in the golden output.
+    lines[0]["files"]["f1"]["path"] = "/home/user/constructed-goal-continuation.jsonl"
+    assert "".join(dumps(r) + "\n" for r in lines) == (root / "goal-continuation.expected.jsonl").read_text()
+    events = lines[1:]
+    assert [(e["type"], e["actor"]) for e in events] == [
+        ("prompt", "caller"), ("reasoning", "agent"), ("tool_call", "agent"),
+        ("usage", "harness"), ("tool_result", "tool"), ("steer", "human"),
+        ("assistant_text", "agent"), ("usage", "harness")]
+    assert {e["turn"] for e in events} == {1}
+    assert events[0]["how"] == {"type": "inferred:goal-context-input", "actor": "inferred:goal-context-input"}
+    assert [e["data"]["input_tokens"] for e in events if e["type"] == "usage"] == [17, 19]
+    assert list(digests(events))[0][1].endswith("^1 5m4s")
+
+
+def test_constructed_harness_task_ids_match_output_turns(convert_rows):
+    rows = []
+    expected = {"constructed-normal": 1, "constructed-queued": 2, "constructed-goal": 3,
+                "constructed-after-abort": 4}
+
+    def start(turn):
+        rows.append(row("event_msg", {"type": "task_started", "turn_id": turn}))
+
+    def usage(turn):
+        rows.append(row("token_usage_record", {"turn_id": turn, "usage": {"input_tokens": 11}}))
+
+    def end(turn, typ="task_complete"):
+        rows.append(row("event_msg", {"type": typ, "turn_id": turn, "reason": "invented-reason"}))
+
+    start("constructed-normal")
+    rows += [input_message("constructed-normal-input", "constructed-normal"),
+             input_message("constructed-normal-steer", "constructed-normal")]
+    usage("constructed-normal")
+    # A queued input with its own recorded id starts a new prompt, even while
+    # the previous task remains active. It must not become that task's steer.
+    rows.append(input_message("constructed-queued-input", "constructed-queued"))
+    end("constructed-normal")
+    start("constructed-queued")
+    usage("constructed-queued")
+    end("constructed-queued")
+    start("constructed-goal")
+    rows.append(input_message("constructed-goal-input", "constructed-goal", "goal.internal_context"))
+    usage("constructed-goal")
+    rows.append(input_message("constructed-goal-steer", "constructed-goal"))
+    end("constructed-goal", "turn_aborted")
+    start("constructed-after-abort")
+    rows.append(input_message("constructed-after-abort-input", "constructed-after-abort"))
+    usage("constructed-after-abort")
+    end("constructed-after-abort")
+
+    events = convert_rows(rows)[1:]
+    assert [e["type"] for e in events if e["type"] in ("prompt", "steer")] == [
+        "prompt", "steer", "prompt", "prompt", "steer", "prompt"]
+    for event in events:
+        payload = event["raw"]["payload"]
+        turn_id = payload.get("turn_id") or payload.get("internal_chat_message_metadata_passthrough", {}).get("turn_id")
+        assert turn_id in expected  # every mapped record in this fixture has an id
+        assert event["turn"] == expected[turn_id]
+    assert [e["actor"] for e in events if e["type"] == "prompt"] == ["human", "human", "caller", "human"]
+
+
+@pytest.mark.parametrize("first_kind", ["user.text", "goal.internal_context"])
+def test_goal_context_in_existing_turn_is_caller_steer(convert_rows, first_kind):
+    lines = convert_rows([input_message("constructed-first", "constructed-turn", first_kind),
+                          input_message("constructed-goal-update", "constructed-turn", "goal.internal_context")])
+    assert [e["type"] for e in lines[1:]] == ["prompt", "steer"]
+    assert [e["turn"] for e in lines[1:]] == [1, 1]
+    assert lines[2]["actor"] == "caller"
+    assert lines[2]["how"] == {"type": "inferred:shared-turn-user-message", "actor": "inferred:goal-context-input"}
+
+
+def test_goal_context_does_not_replace_mixed_user_input_actor_or_text(convert_rows):
+    message = input_message("constructed-mixed", "constructed-turn")
+    message["payload"]["content"].insert(0, {"type": "input_text", "text": "Invented goal context."})
+    message["payload"]["internal_chat_message_metadata_passthrough"]["content_item_kinds"].insert(0, "goal.internal_context")
+    lines = convert_rows([message])
+    assert lines[1]["type"] == "prompt" and lines[1]["actor"] == "human"
+    assert lines[1]["data"] == {"text": "Invented input."}
+
+
+def test_goal_input_uses_active_task_when_its_own_turn_id_is_missing(convert_rows):
+    goal = input_message("constructed-goal", "constructed-turn", "goal.internal_context")
+    del goal["payload"]["internal_chat_message_metadata_passthrough"]["turn_id"]
+    lines = convert_rows([row("event_msg", {"type": "task_started", "turn_id": "constructed-turn"}),
+                          goal, user()])
+    assert [(e["type"], e["turn"]) for e in lines[1:]] == [("prompt", 1), ("steer", 1)]
+
+
+def test_task_start_and_abort_without_input_do_not_invent_a_prompt(convert_rows):
+    lines = convert_rows([row("event_msg", {"type": "task_started", "turn_id": "constructed-aborted"}),
+                          row("event_msg", {"type": "turn_aborted", "turn_id": "constructed-aborted"}),
+                          input_message("constructed-fresh", "constructed-fresh-turn")])
+    assert [(e["type"], e["turn"]) for e in lines[1:]] == [("interrupt", 0), ("prompt", 1)]
+
+
+@pytest.mark.parametrize("end_type", ["task_complete", "turn_aborted"])
+def test_closed_goal_task_is_not_reused_for_unmarked_user_input(convert_rows, end_type):
+    fresh = input_message("constructed-fresh", "constructed-fresh-turn")
+    del fresh["payload"]["internal_chat_message_metadata_passthrough"]["turn_id"]
+    lines = convert_rows([row("event_msg", {"type": "task_started", "turn_id": "constructed-turn"}),
+                          input_message("constructed-goal", "constructed-turn", "goal.internal_context"),
+                          row("event_msg", {"type": end_type, "turn_id": "constructed-turn"}), fresh])
+    assert [(e["actor"], e["turn"]) for e in lines[1:] if e["type"] == "prompt"] == [("caller", 1), ("human", 2)]
 
 
 def test_prompts_steers_and_queued_new_turns(convert_rows):
