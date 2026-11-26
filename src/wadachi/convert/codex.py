@@ -12,7 +12,7 @@ from . import base
 
 HARNESS = "codex"
 SOURCE_FORMAT = "codex-rollout-jsonl"
-CONVERTER = {"name": "wadachi-codex", "version": "0.3.0",
+CONVERTER = {"name": "wadachi-codex", "version": "0.3.1",
              "measured": ["0.154.0", "0.157.1", "0.160.1", "0.162.1", "0.163.0", "0.164.0", "0.167.1"]}
 # The outer exec tool runs JavaScript, not a shell. Inner commands have their
 # own CommandExecution records. Do not classify JavaScript by its contents.
@@ -102,7 +102,9 @@ class _Session:
 
     def __init__(self, records):
         self.records = records
-        self.meta = next((r.get("payload", {}) for _, r in records if r.get("type") == "session_meta"), {})
+        first = next(((o, r) for o, r in records if r.get("type") == "session_meta"), (None, {}))
+        self.meta_offset, self.meta_record = first
+        self.meta = self.meta_record.get("payload", {}) if isinstance(self.meta_record.get("payload"), dict) else {}
         source = self.meta.get("source")
         driven = source == "exec" or isinstance(source, dict) and "subagent" in source
         self.actor = "caller" if driven else "human"
@@ -144,6 +146,9 @@ class _Session:
         if isinstance(git, dict) and isinstance(git.get("commit_hash"), str):
             header["repo_commit"] = git["commit_hash"]
         raw = {"session_meta": m}
+        outer = {k: v for k, v in self.meta_record.items() if k not in ("payload", "type")}
+        if outer:
+            raw["session_meta_record"] = outer  # the record's own fields beside its payload
         time = base.source_time(m.get("timestamp"), raw, "timestamp")
         if time:
             header["started_at"] = time["t"]
@@ -172,9 +177,8 @@ class _Session:
             name += "/" + str(p.get("type", "unknown"))
             if p.get("type") == "item_completed" and isinstance(p.get("item"), dict):
                 name += "/" + str(p["item"].get("type", "unknown"))
-        raw = {k: v for k, v in rec.items() if k != "timestamp"}
         return {"pos": self.positions.get(offset, _position(offset, rec)), "type": "record", "actor": "harness",
-                "data": {"name": name}, "raw": raw, **base.source_time(rec.get("timestamp"), raw, "timestamp")}
+                "data": {"name": name}, "raw": dict(rec), **base.source_time(rec.get("timestamp"), {}, "timestamp")}
 
     def _prompt(self, offset, rec, p, text, turn, goal=False):
         # task_started precedes even the first prompt. Active alone is not steer.
@@ -199,7 +203,9 @@ class _Session:
             return []
         pt = p.get("type")
         if typ == "session_meta":
-            return None  # kept whole in the header's raw.session_meta
+            if offset == self.meta_offset:
+                return None  # kept whole in the header's raw (session_meta and session_meta_record)
+            return []  # a later metadata record (resume, fork): a record event, kept whole
         if typ in ("turn_context", "world_state") or (typ == "event_msg" and pt == "thread_settings_applied") or (typ == "response_item" and pt in ("configuration_update", "additional_tools")):
             settings = p.get("state", {}) if typ == "world_state" else p.get("thread_settings", {}) if pt == "thread_settings_applied" else p
             data = {k: settings[k] for k in ("model", "cwd", "effort") if isinstance(settings.get(k), str)}

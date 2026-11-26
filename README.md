@@ -44,7 +44,7 @@ kept, side by side.
 Each turn also gets a digest: one line, computed, never written by a model.
 
 ```
-t1 h67 r1 e1 s1!1 q1 a1 ^1 2m9s @/home/tuomas/work/ksess/src/parse.rs
+t1 h67 r1 e1 s1!1 q1 a1 ^1 2m9s @/home/user/work/ksess/src/parse.rs
 ```
 
 Turn 1: a human prompt of 67 characters, one read, one edit, one shell call

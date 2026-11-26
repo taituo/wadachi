@@ -431,3 +431,11 @@ def test_self_id_environment_precedence(monkeypatch):
     assert codex.self_id() == "constructed-thread"
     monkeypatch.delenv("CODEX_THREAD_ID")
     assert codex.self_id() == "constructed-process"
+
+
+def test_a_later_session_meta_is_kept(convert_rows):
+    """Review finding: a second metadata record (resume, fork) must not disappear."""
+    lines = convert_rows([row("session_meta", {"id": "constructed-other", "cli_version": "9.8.8"}, ordinal=2)])
+    assert [e["data"]["name"] for e in convert_rows.records] == ["session_meta"]
+    assert convert_rows.records[0]["raw"]["payload"]["id"] == "constructed-other"
+    assert lines[0]["native_id"] == "constructed-thread"

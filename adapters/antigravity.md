@@ -8,7 +8,8 @@ No session content or identifying values appear in these notes or fixtures.
 Measured on one machine: 7 conversations, 6 with a transcript (445 steps).
 The installed CLI was `agy` 1.5.18; its logs name 1.5.12 and 1.5.13 as the
 versions that ran earlier. No conversation file records a version, so the
-header has none.
+header has none, `converter.measured` lists only 1.5.18, and `dump` reports
+every Antigravity session as `unversioned`.
 
 | Fact | Status |
 |---|---|
@@ -41,16 +42,17 @@ CLI documents no variable of its own.
 
 ## Record-to-event table
 
-Raw keeps every field an event's data does not hold, per step type. An
-independent audit by Antigravity (Gemini 4 Neon) compared all 6 sessions with
-the raw files; its findings are fixed in converter 0.2.0.
+Raw keeps every field an event's data does not hold, per step type. A
+review by another model (Antigravity, Gemini 4 Neon) compared all 6 sessions
+with the raw files; its findings are fixed in converter 0.2.0. That is a
+model's review, not a measurement.
 
 | Step | Mapping | Status |
 |---|---|---|
 | `USER_INPUT` | `prompt`; actor human when `source` is `USER_EXPLICIT`, else caller (`how: inferred:not-user-explicit`); text as recorded, wrapper included | measured (1.5.18) |
 | `SYSTEM_MESSAGE`, `EPHEMERAL_MESSAGE` | `context`, `name` the step type | measured (1.5.18) |
 | `PLANNER_RESPONSE` | `setting` for a `model` that differs from the one before (the header takes the first), `reasoning` for `thinking`, `assistant_text` for `content`, `tool_call` per call, `usage` for the token counts, each with its pointer | measured (1.5.18) |
-| `GENERIC` | `tool_result`: `text` the content, `status_as_recorded` the status; `of` the previous step's call when that step is a planner step with a call (`how: inferred:next-step-answers-call`); an `error` field adds an `error` event | measured (1.5.18) |
+| `GENERIC` | `tool_result`: `text` the content, `status_as_recorded` the status; `of` the previous step's call when that step is a planner step with exactly one call (`how: inferred:next-step-answers-call`); an `error` field adds an `error` event | measured (1.5.18) |
 | any other type | `record`, kept whole | |
 
 ## Tools to kinds

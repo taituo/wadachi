@@ -10,7 +10,8 @@ from . import base
 
 HARNESS = "antigravity"
 SOURCE_FORMAT = "antigravity-transcript-jsonl"
-CONVERTER = {"name": "wadachi-antigravity", "version": "0.2.1", "measured": ["1.5.12", "1.5.13", "1.5.18"]}
+# Files measured were on a machine running 1.5.18; logs name earlier versions, not recorded per file.
+CONVERTER = {"name": "wadachi-antigravity", "version": "0.2.2", "measured": ["1.5.18"]}
 SHORT_KEY = "f3"  # the truncated transcript; f2 stays reserved for a hook log
 
 KINDS = {"run_command": "shell", "view_file": "read", "write_to_file": "write", "search_web": "fetch",
@@ -133,7 +134,9 @@ class _Session:
                 last = r["model"]
         self.answers = {}
         for (o, r), (o2, r2) in zip(records, records[1:]):
-            if r.get("type") == "PLANNER_RESPONSE" and r.get("tool_calls") and r2.get("type") == "GENERIC":
+            calls = r.get("tool_calls")
+            if r.get("type") == "PLANNER_RESPONSE" and isinstance(calls, list) and len(calls) == 1 \
+                    and r2.get("type") == "GENERIC":
                 self.answers[o2] = self.positions[o] + "#/tool_calls/0"
 
     def session_header(self):
@@ -155,10 +158,9 @@ class _Session:
     def unmapped(self, offset, rec):
         """A step of a type no row maps: kept whole, content included."""
         data = {"name": rec["type"]} if isinstance(rec.get("type"), str) else {}
-        kept = {k: v for k, v in rec.items() if k != "created_at"}
         event = {"pos": self.positions[offset], "type": "record", "actor": "harness", "data": data,
-                 **base.source_time(rec.get("created_at"), kept, "created_at")}
-        event["raw"] = kept
+                 **base.source_time(rec.get("created_at"), {}, "created_at")}
+        event["raw"] = dict(rec)  # whole, time included
         return event
 
     def map_record(self, offset, rec):

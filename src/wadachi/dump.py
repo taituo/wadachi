@@ -63,7 +63,8 @@ def _freeze(inp):
     """Read each source once. Conversion and raw retention use those same bytes."""
     loaded = [(s, s.reader(s.path)) for s in inp.sources]
     sources = [replace(s, reader=lambda path, snapshot=snap: snapshot) for s, snap in loaded]
-    return replace(inp, sources=sources), loaded
+    unread = {p: p.read_bytes() for p in inp.unread}
+    return replace(inp, sources=sources, unread_data=unread), loaded
 
 
 def _identity(converter, inp, loaded):
@@ -77,7 +78,7 @@ def _identity(converter, inp, loaded):
     return session_id(converter.HARNESS, native_id=nid, path=base.display_path(main.path))
 
 
-def _unchanged(path, converter, loaded, unread=()):
+def _unchanged(path, converter, loaded, unread=(), unread_data=None):
     try:
         with path.open(encoding="utf-8") as stream:
             header = json.loads(stream.readline())
@@ -88,7 +89,7 @@ def _unchanged(path, converter, loaded, unread=()):
     hashes = {src.key: hashlib.sha256(snap.data).hexdigest() for src, snap in loaded}
     files = header.get("files", {})
     try:
-        listed = base.unread_entries(unread)
+        listed = base.unread_entries(unread, unread_data)
     except OSError:
         return False
     return (header.get("type") == "session" and header.get("format") == FORMAT
@@ -97,8 +98,16 @@ def _unchanged(path, converter, loaded, unread=()):
             and header.get("unread", []) == listed)
 
 
-def _keep_raw(store, loaded, unread=()):
-    blobs = [snapshot.data for _, snapshot in loaded] + [p.read_bytes() for p in unread]
+def _recorded_version(path):
+    try:
+        with path.open(encoding="utf-8") as stream:
+            return json.loads(stream.readline()).get("harness", {}).get("version")
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
+def _keep_raw(store, loaded, unread_data=None):
+    blobs = [snapshot.data for _, snapshot in loaded] + list((unread_data or {}).values())
     for data in blobs:
         digest = hashlib.sha256(data).hexdigest()
         out = store / "raw" / digest
@@ -176,7 +185,7 @@ def dump(store: Path, harness: str | None = None, self_only: bool = False,
     for name, converter in sorted(REGISTRY.items()):
         if harness is not None and name != harness:
             continue
-        converted = skipped = failed = unmeasured = 0
+        converted = skipped = failed = unmeasured = unversioned = 0
         try:
             discovered = list(converter.discover())
             if self_only:
@@ -207,17 +216,22 @@ def dump(store: Path, harness: str | None = None, self_only: bool = False,
                     sid = _identity(converter, frozen, loaded)
                     out = store / "sessions" / f"{sid}.jsonl"
                     guard_store(out, allow_inside_git)
-                    unchanged = _unchanged(out, converter, loaded, frozen.unread)
+                    unchanged = _unchanged(out, converter, loaded, frozen.unread, frozen.unread_data)
                     if keep_raw:
-                        _keep_raw(store, loaded, frozen.unread)
+                        _keep_raw(store, loaded, frozen.unread_data)
                     if unchanged:
                         skipped += 1
+                        version = _recorded_version(out)
                     else:
                         lines = base.convert(converter, frozen)
                         base.write_session(lines, store)
                         converted += 1
-                        measured = converter.CONVERTER.get("measured")
-                        if measured is not None and lines[0]["harness"].get("version") not in measured:
+                        version = lines[0]["harness"].get("version")
+                    measured = converter.CONVERTER.get("measured")
+                    if measured is not None:
+                        if version is None:
+                            unversioned += 1
+                        elif version not in measured:
                             unmeasured += 1
                 except DumpError:
                     raise
@@ -228,7 +242,7 @@ def dump(store: Path, harness: str | None = None, self_only: bool = False,
         except INPUT_ERRORS:
             failed += 1
         # Sessions from harness versions the converter was not checked against (SPEC.md 3.4).
-        extra = f" unmeasured={unmeasured}" if unmeasured else ""
+        extra = (f" unmeasured={unmeasured}" if unmeasured else "") + (f" unversioned={unversioned}" if unversioned else "")
         print(f"{name}: converted={converted} skipped={skipped} failed={failed}{extra}")
         failed_any |= failed > 0
     return int(failed_any)

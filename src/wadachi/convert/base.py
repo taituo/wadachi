@@ -2,7 +2,8 @@
 
 Adapters supply the Converter protocol. Positions passed to map_record are
 byte offsets for JSONL, or escaped @keys for keyed sources. Event specs have
-pos, type, actor and data, plus optional t, raw, how, x and of_call. An of_src
+pos, type, actor and data, plus optional t, raw, how, x, of_call and of_raw
+(the raw field that already holds an of_call or of_src reference). An of_src
 reference names another event's src; of may name its derived event id.
 """
 
@@ -144,6 +145,8 @@ class SessionInput:
     hook_key: str = "f2"
     # Files of the session that are not read: listed with hashes (SPEC.md 3.3).
     unread: Sequence[Path] = ()
+    # Bytes of the unread files, read once by dump so hashes and kept copies agree.
+    unread_data: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -207,22 +210,13 @@ def sessions(converter: Converter, paths: Sequence[Path]) -> Iterable[SessionInp
             yield SessionInput([Source("f1", path, "record", converter.SOURCE_FORMAT)])
 
 
-def _holds(value, ref) -> bool:
-    """Whether a raw value already holds the reference as one of its values."""
-    if value == ref:
-        return True
-    if isinstance(value, dict):
-        return any(_holds(v, ref) for v in value.values())
-    if isinstance(value, list):
-        return any(_holds(v, ref) for v in value)
-    return False
-
-
-def unread_entries(paths: Sequence[Path]) -> list[dict]:
+def unread_entries(paths: Sequence[Path], data_by_path: dict | None = None) -> list[dict]:
     """Path, hash and size of files that belong to a session but are not read."""
     entries = []
     for path in paths:
-        data = path.read_bytes()
+        data = (data_by_path or {}).get(path)
+        if data is None:
+            data = path.read_bytes()
         entries.append({"path": display_path(path), "sha256": hashlib.sha256(data).hexdigest(), "size": len(data)})
     return sorted(entries, key=lambda e: e["path"])
 
@@ -292,7 +286,7 @@ def convert(converter: Converter, session: SessionInput | Path, hook_path: Path 
     header = {"type": "session", "format": FORMAT, "id": sid, "harness": {"name": converter.HARNESS},
               "files": files, "converter": converter.CONVERTER}
     if session.unread:
-        header["unread"] = unread_entries(session.unread)
+        header["unread"] = unread_entries(session.unread, session.unread_data)
     if nid:
         header["native_id"] = nid
     if (header.keys() - {"harness"}) & metadata.keys():
@@ -341,8 +335,9 @@ def convert(converter: Converter, session: SessionInput | Path, hook_path: Path 
                 target = table.get(ref)
                 if target in earlier:
                     s["of"] = target
-                elif not _holds(s.get("raw"), ref):
-                    # Keep an unresolved reference, unless raw already keeps the source field.
+                elif s.get("raw", {}).get(s.get("of_raw")) != ref:
+                    # Keep an unresolved reference, unless the adapter named the raw field
+                    # that already holds it (of_raw).
                     s.setdefault("raw", {})[name] = ref
         if "of" in s and s["of"] not in earlier:
             s.setdefault("raw", {})["of"] = s.pop("of")
@@ -366,6 +361,7 @@ def convert(converter: Converter, session: SessionInput | Path, hook_path: Path 
     events, turn = [], 0
     for seq, s in enumerate(ordered):
         turn += s["type"] == "prompt"
+        s.pop("of_raw", None)
         e = {k: s[k] for k in ("id", "type", "actor", "src", "data", "t", "of", "raw", "how", "x") if k in s}
         events.append(e | {"seq": seq, "turn": turn})
     return section_2([header] + events)

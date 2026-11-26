@@ -15,7 +15,7 @@ from . import base
 HARNESS = "claude-code"
 SOURCE_FORMAT = "claude-code-jsonl"
 META_FORMAT = "claude-code-subagent-meta-json"
-CONVERTER = {"name": "wadachi-claude-code", "version": "0.3.0", "measured": ["2.1.296"]}
+CONVERTER = {"name": "wadachi-claude-code", "version": "0.3.1", "measured": ["2.1.296"]}
 SELF_FROM_HERDR = True
 META_KEY = "f3"  # f2 stays reserved for a hook log
 
@@ -32,7 +32,7 @@ USAGE = {"input_tokens": "input_tokens", "output_tokens": "output_tokens",
          "cache_read_input_tokens": "cache_read_tokens", "cache_creation_input_tokens": "cache_write_tokens"}
 # Text Claude Code writes into user records itself. Exact prefixes, not guesses.
 HARNESS_TEXT = ("<local-command-stdout>", "<local-command-stderr>", "<local-command-caveat>")
-HANDBACK = ("send", True)  # toolUseResult.handback values that mean hand-back mode
+HANDBACK = ("send",)  # toolUseResult.handback values that mean hand-back mode (measured)
 INTERRUPTS = ("[Request interrupted by user]", "[Request interrupted by user for tool use]")
 
 
@@ -147,7 +147,7 @@ def _text_of(content):
     return None
 
 
-def a_without(value, names):
+def _without(value, names):
     return {k: v for k, v in value.items() if k not in names} if isinstance(value, dict) else value
 
 
@@ -160,6 +160,26 @@ def _plain_numbers(value):
     if isinstance(value, list):
         return [_plain_numbers(v) for v in value]
     return value
+
+
+def _exact(content, text) -> bool:
+    """Whether text alone holds the content exactly: a string, or one plain text block."""
+    if text is None:
+        return False
+    if isinstance(content, str):
+        return True
+    return (isinstance(content, list) and len(content) == 1 and isinstance(content[0], dict)
+            and set(content[0]) == {"type", "text"})
+
+
+def _content(content, text):
+    """Raw keeps content that text does not hold exactly (several blocks, images, extra keys)."""
+    return None if _exact(content, text) else {"content": content}
+
+
+def _block_extra(block, mapped):
+    extra = {k: v for k, v in block.items() if k not in mapped}
+    return {"block": extra} if extra else None
 
 
 def _integer(data, name, value):
@@ -281,7 +301,7 @@ class _Session:
         return {"pos": self.positions.get(offset, str(offset)), "type": "record", "actor": "harness",
                 "data": {"name": name}, "raw": raw, **base.source_time(rec.get("timestamp"), raw, "timestamp")}
 
-    def _input(self, offset, rec, text, pointer="", typ="prompt"):
+    def _input(self, offset, rec, text, pointer="", typ="prompt", raw_extra=None):
         """A user turn's text. Actor from the recorded origin, else by rule."""
         data = {} if text is None else {"text": text}
         how = {}
@@ -299,7 +319,7 @@ class _Session:
         if typ == "steer":
             how["type"] = "inferred:text-beside-tool-result"
         fields = {"how": how} if how else {}
-        return [self._event(offset, rec, typ, actor, data, pointer, **fields)]
+        return [self._event(offset, rec, typ, actor, data, pointer, raw_extra=raw_extra, **fields)]
 
     def _harness_user(self, offset, rec, content):
         """User-role text the harness wrote itself: in the model's input, not the human's."""
@@ -307,7 +327,7 @@ class _Session:
         text = _text_of(content)
         if text is not None:
             data["text"] = text
-        return [self._event(offset, rec, "context", "harness", data)]
+        return [self._event(offset, rec, "context", "harness", data, raw_extra=_content(content, text))]
 
     def _user(self, offset, rec, m):
         content = m.get("content")
@@ -318,7 +338,7 @@ class _Session:
             text = _text_of(content)
             if text is not None:
                 data["text"] = text
-            return [self._event(offset, rec, "compaction", "harness", data)]
+            return [self._event(offset, rec, "compaction", "harness", data, raw_extra=_content(content, text))]
         if isinstance(content, str):
             if content.startswith(HARNESS_TEXT):
                 return self._harness_user(offset, rec, content)
@@ -357,13 +377,15 @@ class _Session:
                 if tool in ("Agent", "Task"):
                     # In hand-back mode the result is a harness note; the report arrives
                     # separately. "send" is the measured value; others are left unknown.
-                    if result.get("handback") in HANDBACK:
+                    if isinstance(result.get("handback"), str) and result["handback"] in HANDBACK:
                         data["text_origin"] = "tool"
                     elif "handback" not in result:
                         data["text_origin"] = "agent"
                 elif tool in TEXT_ORIGIN:
                     data["text_origin"] = TEXT_ORIGIN[tool]
-            event = self._event(offset, rec, "tool_result", "tool", data, f"#/message/content/{i}")
+            mapped = ("type", "tool_use_id", "is_error") + (("content",) if _exact(b.get("content"), text) else ())
+            event = self._event(offset, rec, "tool_result", "tool", data, f"#/message/content/{i}",
+                                raw_extra=_block_extra(b, mapped))
             if isinstance(call, str):
                 event["of_call"] = call
             events.append(event)
@@ -371,20 +393,28 @@ class _Session:
                  and isinstance(b.get("text"), str)]
         others = [b for b in content if isinstance(b, dict) and b.get("type") not in ("text", "tool_result")]
         if not results:
-            if len(texts) == 1 and texts[0][1]["text"] in INTERRUPTS:
-                return events + [self._event(offset, rec, "interrupt", "human", {"reason": texts[0][1]["text"]},
+            text = texts[0][1]["text"] if len(texts) == 1 else None
+            if text is not None and text in INTERRUPTS and _exact(content, text):
+                return events + [self._event(offset, rec, "interrupt", "human", {"reason": text},
                                              how={"type": "inferred:interrupt-marker"})]
-            if texts or others:
-                # One input; several text blocks or images keep their text in raw.
-                text = texts[0][1]["text"] if len(texts) == 1 else None
-                return events + self._input(offset, rec, text)
+            if content:
+                # One input; several text blocks, images or extra keys stay in raw.content.
+                return events + self._input(offset, rec, text, raw_extra=_content(content, text))
             return events
         for i, b in texts:
+            extra = _block_extra(b, ("type", "text"))
             if b["text"] in INTERRUPTS:
                 events.append(self._event(offset, rec, "interrupt", "human", {"reason": b["text"]},
-                                          f"#/message/content/{i}", how={"type": "inferred:interrupt-marker"}))
+                                          f"#/message/content/{i}", raw_extra=extra,
+                                          how={"type": "inferred:interrupt-marker"}))
             else:
-                events += self._input(offset, rec, b["text"], f"#/message/content/{i}", typ="steer")
+                events += self._input(offset, rec, b["text"], f"#/message/content/{i}", typ="steer", raw_extra=extra)
+        for i, b in enumerate(content):
+            # Anything else beside results (images, unknown blocks, non-objects) is kept whole.
+            if not (isinstance(b, dict) and (b.get("type") == "tool_result"
+                                             or (b.get("type") == "text" and isinstance(b.get("text"), str)))):
+                events.append(self._event(offset, rec, "record", "harness", {"name": "content-block"},
+                                          f"#/message/content/{i}", raw_extra={"block": b}))
         return events
 
     def _assistant(self, offset, rec, m):
@@ -396,22 +426,27 @@ class _Session:
             text = _text_of(content)
             if text is not None:
                 data["text"] = text
-            events = [self._event(offset, rec, "error", "harness", data)]
+            events = [self._event(offset, rec, "error", "harness", data, raw_extra=_content(content, text))]
         else:
             events = []
             for i, b in enumerate(content):
+                ptr = f"#/message/content/{i}"
                 if not isinstance(b, dict):
+                    events.append(self._event(offset, rec, "record", "harness", {"name": "content-block"}, ptr,
+                                              raw_extra={"block": b}))
                     continue
-                ptr, bt = f"#/message/content/{i}", b.get("type")
+                bt = b.get("type")
                 if bt == "text" and isinstance(b.get("text"), str):
-                    events.append(self._event(offset, rec, "assistant_text", "agent", {"text": b["text"]}, ptr))
+                    events.append(self._event(offset, rec, "assistant_text", "agent", {"text": b["text"]}, ptr,
+                                              raw_extra=_block_extra(b, ("type", "text"))))
                 elif bt == "thinking":
                     data = {}
                     if isinstance(b.get("thinking"), str) and b["thinking"]:
                         data["text"] = b["thinking"]
                     else:
                         data["redacted"] = True
-                    extra = {"block": {k: v for k, v in b.items() if k not in ("type", "thinking")}}
+                    mapped = ("type", "thinking") if isinstance(b.get("thinking"), str) else ("type",)
+                    extra = {"block": {k: v for k, v in b.items() if k not in mapped}}
                     events.append(self._event(offset, rec, "reasoning", "agent", data, ptr, raw_extra=extra))
                 elif bt == "redacted_thinking":
                     events.append(self._event(offset, rec, "reasoning", "agent", {"redacted": True}, ptr,
@@ -432,6 +467,10 @@ class _Session:
                     extra = {k: v for k, v in b.items() if k not in ("type", "id", "name", "input")}
                     events.append(self._event(offset, rec, "tool_call", "agent", data, ptr,
                                               raw_extra={"block": extra} if extra else None))
+                else:
+                    # A block type no row maps (server tools, images, future types): kept whole.
+                    events.append(self._event(offset, rec, "record", "harness", {"name": "content-block"}, ptr,
+                                              raw_extra={"block": b}))
         usage = m.get("usage")
         if offset in self.usage_lines and isinstance(usage, dict):
             data = {}
@@ -476,7 +515,7 @@ class _Session:
             data = {"name": "prompt_snapshot", "role": "system"}
             if isinstance(part, str):
                 data["text"] = part
-            extra = {"attachment": a_without(a, ("systemPrompt",))} if i == 0 else None
+            extra = {"attachment": _without(a, ("systemPrompt",))} if i == 0 else None
             event = self._event(offset, rec, "context", "harness", data, f"#/attachment/systemPrompt/{i}",
                                 raw_extra=extra)
             if i:

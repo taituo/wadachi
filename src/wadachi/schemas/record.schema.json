@@ -845,8 +845,6 @@
                   },
                   "text_origin": {
                     "enum": [
-                      "tool",
-                      "model",
                       "agent"
                     ]
                   },

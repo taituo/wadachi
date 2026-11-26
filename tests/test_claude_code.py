@@ -185,3 +185,28 @@ def test_context_is_what_the_model_was_given():
     # Context starts no turn and is not in digests.
     assert all(e["turn"] == 0 for e in context[:5])
     assert [d for _, d in digests(events)][0].startswith("t1 h20 a1")
+
+
+def test_no_block_is_dropped(tmp_path):
+    """Review finding: unknown blocks, multi-block results and images must survive."""
+    rows = [
+        {"type": "assistant", "uuid": "a", "sessionId": "s", "message": {"id": "m", "content": [
+            {"type": "server_tool_use", "id": "srv", "name": "invented", "input": {"q": "INVENTEDBLOCK"}}]}},
+        {"type": "assistant", "uuid": "b", "sessionId": "s", "message": {"id": "m2", "content": [
+            {"type": "tool_use", "id": "t1", "name": "Read", "input": {"file_path": "/home/user/a"}}]}},
+        {"type": "user", "uuid": "c", "sessionId": "s", "message": {"content": [
+            {"type": "tool_result", "tool_use_id": "t1", "content": [
+                {"type": "text", "text": "FIRSTTEXT"}, {"type": "text", "text": "SECONDTEXT"}]},
+            {"type": "image", "source": {"data": "INVENTEDIMAGE"}}]}},
+        {"type": "user", "uuid": "d", "sessionId": "s", "entrypoint": "cli", "message": {"content": [
+            {"type": "text", "text": "Invented."}, {"type": "image", "source": {"data": "PROMPTIMAGE"}}]}},
+    ]
+    path = tmp_path / "blocks.jsonl"
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    lines = base.convert(cc, path)
+    out = json.dumps(lines)
+    for marker in ("INVENTEDBLOCK", "FIRSTTEXT", "SECONDTEXT", "INVENTEDIMAGE", "PROMPTIMAGE"):
+        assert marker in out, marker
+    assert [e["type"] for e in lines[1:]] == ["record", "tool_call", "tool_result", "record", "prompt"]
+    assert lines[3]["raw"]["block"]["content"][1]["text"] == "SECONDTEXT" and "text" not in lines[3]["data"]
+    assert lines[5]["data"] == {"text": "Invented."} and lines[5]["raw"]["content"][1]["type"] == "image"

@@ -45,7 +45,10 @@ filename supplies a native id or a parent: both come from recorded
 ## Record-to-event table
 
 Every event keeps the record's other fields in `raw` (the message without its
-`content`, `toolUseResult`, `origin` and so on). Nothing is left out: a record
+`content`, `toolUseResult`, `origin` and so on). Content that `text` does not
+hold exactly (several text blocks, images, extra keys on a block) stays in
+`raw.content` or `raw.block`, and a content block of a type no row maps is a
+`record` event named `content-block`, kept whole. Nothing is left out: a record
 no row below maps is a `record` event named by its type (`attachment/<type>`,
 `system/<subtype>`), kept whole. The converter header lists
 `measured: ["2.1.296"]`.
@@ -94,7 +97,7 @@ no row below maps is a `record` event named by its type (`attachment/<type>`,
 | `Glob`, `Grep` | search | `path` | | documented |
 | `WebFetch` | fetch | | `model` | measured (2.1.296) |
 | `WebSearch` | fetch | | | documented |
-| `Agent` (named `Task` in older versions) | subagent | | `tool` when `toolUseResult.handback` is `"send"`; `agent` when there is no `handback`; left out for any other value | measured (2.1.296) for hand-back |
+| `Agent` (named `Task` in older versions) | subagent | | `tool` when `toolUseResult.handback` is the string `"send"`; `agent` when there is no `handback`; left out for any other value | measured (2.1.296) for hand-back |
 | `mcp__<server>__<tool>` | mcp | | | documented |
 | anything else, including `SubagentHandback`, `TodoWrite` | other | | | measured (2.1.296) for `SubagentHandback` |
 
@@ -102,7 +105,7 @@ no row below maps is a `record` event named by its type (`attachment/<type>`,
 
 A transcript holds more than the conversation: the full system prompt
 (`prompt_snapshot`), the account's e-mail address (`session_context`) and the
-organization id. Since converter 0.2.0 the first two are `context` events,
+organization id. The first two are `context` events,
 because the model was given them; the organization id is not. Treat a store
 like the transcripts themselves, and apply the `secrets` layer to anything
 given to a model or exported (SPEC.md section 13).

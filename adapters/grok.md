@@ -7,8 +7,9 @@ No session content or identifying values appear in these notes or fixtures.
 
 Measured on one machine with Grok CLI 1.0.92: 3 local sessions (one
 interactive with a compaction, one headless run made for this measurement).
-An independent audit by Antigravity (Gemini 4 Neon) compared all of them with
-the raw files; its findings are fixed in converter 0.2.0.
+A review by another model (Antigravity, Gemini 4 Neon) compared all of them
+with the raw files; its findings are fixed in converter 0.2.0. That is a
+model's review, not a measurement.
 The CLI's own user guide is installed under `GROK_HOME/docs`.
 
 | Fact | Status |
@@ -38,7 +39,7 @@ line with a unique id is `@reasoning/<id>`.
 
 | Source | Mapping | Status |
 |---|---|---|
-| header | native id `info.id`, `cwd`, `model`, `started_at` from `summary.json`; `mode` headless or interactive from `prompt_context.json` `is_non_interactive`; no `harness.version` (not recorded), so `dump` reports every Grok session as unmeasured | measured (1.0.92) |
+| header | native id `info.id`, `cwd`, `model`, `started_at` from `summary.json`; `mode` headless or interactive from `prompt_context.json` `is_non_interactive`; no `harness.version` (not recorded), so `dump` reports every Grok session as `unversioned` | measured (1.0.92) |
 | `system` | `context`, role `system` | measured (1.0.92) |
 | `user` with `synthetic_reason` | `context`, role `user`, `name` the reason | measured (1.0.92) |
 | `user` with `prompt_index` | `prompt`; actor caller in a headless session, else human (`how: inferred:session-interactivity`) | measured (1.0.92) |
@@ -68,7 +69,7 @@ does not interleave them by guessing.
 | `search_replace` | edit | measured (1.0.92) |
 | `run_terminal_command` | shell | measured (1.0.92) |
 | `grep` | search | measured (1.0.92) |
-| `mcp*` | mcp | not measured |
+| `mcp__*` | mcp | not measured |
 | anything else | other | |
 
 `paths` are not set: arguments are a JSON string whose keys were not measured

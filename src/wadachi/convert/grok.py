@@ -11,7 +11,7 @@ from . import base
 
 HARNESS = "grok"
 SOURCE_FORMAT = "grok-chat-history-jsonl"
-CONVERTER = {"name": "wadachi-grok", "version": "0.2.0", "measured": ["1.0.92"]}
+CONVERTER = {"name": "wadachi-grok", "version": "0.2.1", "measured": ["1.0.92"]}
 SELF_FROM_HERDR = True
 # f1 chat history; f2 reserved for a hook log; then fixed aux keys.
 AUX = {"f3": ("events.jsonl", "grok-events-jsonl", True),
@@ -50,7 +50,8 @@ def _summary(directory: Path) -> dict:
 
 def discover():
     for path in sorted((grok_home() / "sessions").glob("*/*/chat_history.jsonl")):
-        info = _summary(path.parent).get("info") or {}
+        info = _summary(path.parent).get("info")
+        info = info if isinstance(info, dict) else {}
         try:
             stat = path.stat()
             nid = info.get("id") if isinstance(info.get("id"), str) else None
@@ -118,7 +119,7 @@ class _Session:
         summary, context, usage = self._one("f6"), self._one("f7"), self._one("f8")
         header = {"harness": {"name": HARNESS}}
         # prompt_context.version is the prompt format's number, not the CLI's version; none is recorded.
-        info = summary.get("info") or {}
+        info = summary.get("info") if isinstance(summary.get("info"), dict) else {}
         if isinstance(info.get("cwd"), str):
             header["cwd"] = info["cwd"]
         first = next((r.get("model_id") for _, r in self.aux.get("f3") or []
@@ -189,7 +190,7 @@ class _Session:
                 if not isinstance(call, dict):
                     continue
                 name = call.get("name")
-                data = {"kind": KINDS.get(name, "mcp" if isinstance(name, str) and name.startswith("mcp") else "other")}
+                data = {"kind": KINDS.get(name, "mcp" if isinstance(name, str) and name.startswith("mcp__") else "other")}
                 if isinstance(name, str):
                     data["tool"] = name
                 if isinstance(call.get("id"), str):
@@ -253,15 +254,19 @@ class _Session:
                 drop.add("cancellation_category")
         else:
             out, data = "record", ({"name": typ} if isinstance(typ, str) else {})
+        if out == "record":
+            drop = set()  # a record event keeps its record whole, time included
         raw = {k: v for k, v in rec.items() if k not in drop}
-        timed = base.source_time(rec.get("ts"), raw, "ts")
-        actor = "human" if out == "interrupt" and (rec.get("cancellation_context") or {}).get("trigger") == "ctrl_c" else "harness"
+        timed = base.source_time(rec.get("ts"), {} if out == "record" else raw, "ts")
+        context = rec.get("cancellation_context") if isinstance(rec.get("cancellation_context"), dict) else {}
+        actor = "human" if out == "interrupt" and context.get("trigger") == "ctrl_c" else "harness"
         how = {"actor": "inferred:ctrl-c-trigger"} if actor == "human" else {}
         spec = {"pos": str(offset), "type": out, "actor": actor, "data": data, "raw": raw, **timed}
         if how:
             spec["how"] = how
         if isinstance(rec.get("tool_call_id"), str):
             spec["of_call"] = rec["tool_call_id"]
+            spec["of_raw"] = "tool_call_id"  # raw keeps the source field; no second copy if unresolved
         return [spec]
 
 

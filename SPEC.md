@@ -20,9 +20,10 @@ described in RFC 2119 and RFC 8174 when they appear in capitals.
 2. **Never leave out.** Every record of every source the converter reads
    becomes at least one event: a record no other type fits is a `record`
    event that keeps it whole (section 4.2). The one exception is a session's
-   own metadata record, which the header keeps whole in `raw`. Files of the session that are not
-   read are listed with their hashes (section 3.3). A reader can always tell
-   what was there, even what no converter understands yet.
+   own metadata record, which the header keeps whole in `raw`. Files of the
+   session that are not read are listed with their hashes (section 3.3). A
+   reader can always tell what was there, even what no converter understands
+   yet.
 3. **Never invent.** A value the source did not record is left out. A
    timestamp is never copied from a neighbouring event, a missing time zone is
    never guessed, and a path is never completed.
@@ -152,7 +153,8 @@ version was checked against. A session whose `harness.version` is not in that
 list is still converted, and since nothing is left out (principle 2) any new
 record shape becomes a `record` event; tools SHOULD report such sessions, so
 the converter is checked against the new version before its output is relied
-on.
+on. A session whose harness records no version cannot be checked this way;
+tools SHOULD report it apart from the unmeasured ones.
 
 ## 4. Events
 
@@ -575,6 +577,7 @@ not about the files themselves.
 | `header` | the header is on the first line and only there |
 | `session-id` | the header's id is the one section 7 derives, and a store's file is named after it |
 | `sources` | `f1` is a `record` source (section 3.3) |
+| `unread` | the header's `unread` is in path order, without repeats (section 3.3) |
 | `seq` | `seq` counts from 0 without gaps |
 | `turn` | `turn` follows section 4.3 |
 | `time` | every time exists (section 4.5) |

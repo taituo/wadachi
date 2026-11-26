@@ -15,20 +15,23 @@ it. When the container goes away, so does the record. Three things keep it:
    | Grok CLI | `GROK_HOME` | `~/.grok` |
    | Antigravity CLI | `WADACHI_ANTIGRAVITY_HOME` (wadachi's own; the CLI documents none) | `~/.gemini/antigravity-cli` |
 
-   Session and event ids come from the harness's own session ids, not from
-   paths, so a store built from a mounted copy has the same ids as one built
-   on the machine that ran the session.
+   Session and event ids come from the harness's own session ids when the
+   harness records one (every converter here finds one), not from paths, so a
+   store built from a mounted copy has the same ids as one built on the
+   machine that ran the session.
 
 2. **Dump when the run ends.** Run `wadachi dump --keep-raw` with the same
    variables pointing at the run's home, into a store outside the container
    (`WADACHI_STORE`). `--keep-raw` copies every source and every file listed
    as `unread` by its SHA-256, so the raw files outlive the container too.
+   `dump` reads each file once, so the kept copy is the one the header names.
 
 3. **Pin versions.** Install the harness at a fixed version and wadachi at a
    fixed commit. Each converter lists the harness versions it was checked
    against in `converter.measured`; `dump` prints `unmeasured=N` for sessions
    from other versions, which still convert (nothing is left out) but should
-   be checked before their output is relied on.
+   be checked before their output is relied on, and `unversioned=N` for
+   sessions whose harness records no version (Antigravity, Grok).
 
 ## Example: bubblewrap with separate logins
 
