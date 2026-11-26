@@ -73,6 +73,8 @@ pip install git+https://github.com/taituo/wadachi
 wadachi validate examples/store
 wadachi digest examples/store/sessions/s_e6468e8dce041668.jsonl
 
+wadachi convert claude-code --list
+wadachi dump --harness claude-code
 wadachi convert codex --list
 wadachi dump --harness codex
 wadachi convert opencode --list
@@ -91,6 +93,6 @@ skills describe also works with `jq` and `grep`.
 ## Status
 
 Version 0.1, a draft. The format, schemas, tools and conformance suite are
-consistent with each other and tested. Codex and OpenCode converters are
-available. The notes in `adapters/` say for each harness what has been checked
+consistent with each other and tested. Claude Code, Codex and OpenCode
+converters are available. The notes in `adapters/` say for each harness what has been checked
 against real files and what has not.

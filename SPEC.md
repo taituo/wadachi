@@ -166,13 +166,13 @@ Optional:
 | `assistant_text` | agent | `text`, `text_truncated` |
 | `reasoning` | agent | `text`, `text_truncated`, `redacted` (the harness kept only an opaque or summarised form) |
 | `tool_call` | agent | `tool`, `kind`, `call_id`, `args`, `paths` |
-| `tool_result` | tool | `tool`, `kind`, `call_id`, `exit_code`, `status_as_recorded`, `text`, `text_truncated`, `paths` |
+| `tool_result` | tool | `tool`, `kind`, `call_id`, `exit_code`, `status_as_recorded`, `text`, `text_truncated`, `text_origin`, `paths` |
 | `steer` | human, caller | `text`: a message sent while the agent was working |
 | `interrupt` | human, caller, harness | `reason` |
 | `permission` | human, caller, harness, hook | `decision` (`asked`, `allowed`, `denied`), `rule` |
 | `compaction` | harness | `before_tokens`, `after_tokens`, `text` (the summary the harness wrote) |
 | `subagent_start` | agent, harness | `session` (the child's session id), `agent` |
-| `subagent_end` | agent, harness | `session`, `reason` |
+| `subagent_end` | agent, harness | `session`, `reason`, `text` (the report the child handed back, as the parent received it), `text_truncated`, `text_origin` |
 | `setting` | harness | `model`, `cwd`, `effort`: a change during the session |
 | `usage` | harness | `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_write_tokens` |
 | `observation` | hook | `tree_before`, `tree_after`, `exit_code`, `duration_ms`, `cwd` |
@@ -194,6 +194,19 @@ Notes:
   a shell call as successful when it exited with 1; both values are kept, and
   `exit_code` decides.
 - `compaction.text` is written by a model, so it is a claim, not a fact.
+- `text_origin` says who wrote a result's `text`: `tool` when it is the
+  tool's own output (a command's output, a file's bytes, a page as fetched),
+  `model` when a model inside the tool wrote it from the source (a fetch tool
+  that has a small model answer a question about the page), and `agent` when
+  it is another agent's report. Text from `model` or `agent` is a claim about
+  the source, not the source: the source itself was never in the session.
+  `text_origin` is set from the adapter's fixed tool table, like `kind`, and is
+  left out when the adapter does not know. A `subagent_end` with `text` is
+  always `agent`.
+- A child agent's report can reach the parent through more than one model:
+  the child reads a page through a tool whose `text_origin` is `model`, then
+  writes its own report. The parent's record holds only the last link. The
+  child's session record, linked by `parent`, holds the one before it.
 - A `tool_call` and its `tool_result` share a `call_id` when the source records
   one, and the result's `of` points at the call.
 - In `observation`, `tree_before` and `tree_after` are full git tree ids,

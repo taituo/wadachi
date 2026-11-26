@@ -70,6 +70,11 @@ section 4.2). Things that are easy to get wrong:
   a guess: record them only with `how: {"data.paths": "inferred:<rule>"}`.
 - **Compaction.** The summary a harness writes is model text; it goes in
   `compaction.text` and nowhere else.
+- **Who wrote a result.** Some tools return a model's answer about the
+  source, not the source (a fetch tool that summarises a page), and some
+  subagents report back through a separate message. Set `text_origin` from a
+  fixed per-tool table: `tool`, `model` or `agent`. Leave it out when unsure.
+  A child's hand-back report is a `subagent_end` with `text`.
 - **Usage and cost.** Token counts go in `usage` events; harness-specific cost
   units go under `x.<harness>`, as strings if they are not integers.
 

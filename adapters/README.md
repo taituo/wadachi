@@ -15,7 +15,7 @@ their formats without notice:
 | Harness | Records | Hooks | Status of these notes |
 |---|---|---|---|
 | [Kiro CLI](kiro-cli.md) | session files, three formats | per agent | measured on one machine; a reader exists (ksess) |
-| [Claude Code](claude-code.md) | JSON Lines transcript | 30+ events, global or per project | documented |
+| [Claude Code](claude-code.md) | JSON Lines transcript, subagents in separate files | 30+ events, global or per project | measured on one machine (2.1.296); converter exists |
 | [Codex CLI](codex.md) | JSON Lines rollouts | none for tool calls found yet; a `notify` setting to check | reported |
 | [OpenCode](opencode.md) | SQLite, older versions JSON files | server plugins (v2 docs) | documented and reported |
 | [Antigravity CLI](antigravity.md) | JSON Lines transcripts, truncated and full | SDK hooks; CLI hooks to check | reported |

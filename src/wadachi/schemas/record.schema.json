@@ -541,6 +541,13 @@
                     "items": {
                       "type": "string"
                     }
+                  },
+                  "text_origin": {
+                    "enum": [
+                      "tool",
+                      "model",
+                      "agent"
+                    ]
                   }
                 }
               }
@@ -750,6 +757,19 @@
                   },
                   "reason": {
                     "type": "string"
+                  },
+                  "text_origin": {
+                    "enum": [
+                      "tool",
+                      "model",
+                      "agent"
+                    ]
+                  },
+                  "text": {
+                    "type": "string"
+                  },
+                  "text_truncated": {
+                    "type": "boolean"
                   }
                 }
               }

@@ -111,6 +111,12 @@ grep -l 'parse_read' sessions/*.jsonl
   `text` of a `compaction` are what a model said. "Tests pass" in an
   assistant's text means nothing until a `tool_result` with `exit_code` 0
   after the last change backs it.
+- **A result is not always its source.** A `tool_result` or `subagent_end`
+  with `text_origin` `model` or `agent` holds what a model or another agent
+  said about the source (a fetched page summarised by a second model, a
+  subagent's report). The source itself was never in the session. Quote it as
+  that model's account, and follow `parent` links to the child's record for
+  the step before.
 - **Inferred is not recorded.** A value listed in `how` was guessed by an
   adapter's rule. Say so when you use it.
 - **Missing is missing.** No `t` means the time was not recorded. Do not
