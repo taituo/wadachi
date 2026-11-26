@@ -82,8 +82,8 @@ code, versioned with the converter; a model never picks a kind.
 
 ## 4. Build with the shared machinery
 
-The template already does the parts every converter shares; do not rewrite
-them:
+Use `src/wadachi/convert/base.py` for the parts every converter shares. The
+template is a thin example on top of it. Do not copy these parts into adapters:
 
 - reading a live file once, up to its last complete line, and hashing exactly
   those bytes
@@ -97,6 +97,32 @@ them:
   section 5)
 - `seq` and `turn` assigned after ordering
 - every line written with `wadachi.dumps`
+
+Supply `HARNESS`, `SOURCE_FORMAT`, `CONVERTER`, `KINDS`, `native_id(records)`,
+`map_record(position, record)` and `discover()`. `map_hook` is optional; the
+default reads `wadachi-hook/0.1`. Register the module in
+`src/wadachi/convert/__init__.py`. The CLI uses it for `wadachi convert`.
+
+For more than one record file, implement `sessions(paths)` returning
+`base.SessionInput` items. It also handles discovery when paths is empty.
+Each `base.Source` has a fixed key, path, role and format. Reserve missing
+keys; never assign keys by counting present files. Reserve `hook_key` after
+all record keys and before aux keys. Mark a truncated duplicate with
+`truncated=True, events=False`; read events from its complete copy. Metadata
+sources also use `events=False`. Session header metadata can carry `parent`;
+each child has its own SessionInput and globally unique native id.
+
+`Source.reader` defaults to `read_jsonl`. Other readers return a `Snapshot`
+containing the bytes hashed and records read from those same bytes. For SQLite,
+use `read_sqlite(path, rows)`: it reads rows from a consistent physical backup
+and hashes that backup's bytes (SPEC.md 3.3). The rows callback supplies a
+fixed SQL order and positions `"@" + escape_key(row_key)`. Never hash a JSON
+dump of rows or just the live database file while its WAL can change.
+
+Event specs use `pos`, `type`, `actor`, `data` and optional event fields.
+`of_call` links to a record tool call; `of_src` links to a source position.
+Unresolvable or forward references stay in `raw`. Give each part of a record
+its own JSON Pointer in `pos`.
 
 ## 5. Hooks
 
@@ -147,9 +173,25 @@ event. Give it this list of failures seen in real converters:
 - a mid-turn message counted as a new prompt
 - several tool calls in one record collapsed into one event
 
-Each disagreement becomes a fixture: a small, scrubbed copy of the real source
-and the expected wadachi output, checked by a test. A real session the
-converter's author never saw is the best fixture there is.
+Each disagreement becomes a constructed fixture and expected wadachi output,
+checked by a test. Follow the privacy rule below.
+
+## Fixtures are constructed, never copied
+
+This repository is public. Fixtures copy the structure of real records:
+field names, nesting, types and record order. Every value is invented. Never
+copy real prompts, code, paths, usernames, hostnames, ids, tokens or timestamps.
+Use `/home/user` for home. This applies to inline test data as well as files.
+
+As WHY.md's “Forge” says, mark constructed sessions in their header, converter
+and sources. Use a header extension such as
+`x.fixture.constructed: true`, a converter name that says `constructed`, and
+source formats or names that say `constructed`. Label input-only fixtures in
+their test or accompanying text too. Do not change a real record to make a
+fixture; build a new one from invented values.
+
+If raw copies are needed during work, `.private/` is the only place inside
+this repository where they may sit. It is ignored by git. Never commit them.
 
 ## 7. Document the adapter
 
