@@ -10,7 +10,7 @@ from . import base
 
 HARNESS = "antigravity"
 SOURCE_FORMAT = "antigravity-transcript-jsonl"
-CONVERTER = {"name": "wadachi-antigravity", "version": "0.2.0", "measured": ["1.5.12", "1.5.13", "1.5.18"]}
+CONVERTER = {"name": "wadachi-antigravity", "version": "0.2.1", "measured": ["1.5.12", "1.5.13", "1.5.18"]}
 SHORT_KEY = "f3"  # the truncated transcript; f2 stays reserved for a hook log
 
 KINDS = {"run_command": "shell", "view_file": "read", "write_to_file": "write", "search_web": "fetch",
@@ -29,13 +29,19 @@ def _logs(conversation: Path) -> Path:
     return conversation / ".system_generated" / "logs"
 
 
+def _full(conversation: Path) -> Path:
+    return _logs(conversation) / "transcript_full.jsonl"
+
+
 def discover():
-    for path in sorted((home() / "brain").glob("*/.system_generated/logs/transcript_full.jsonl")):
-        conversation = path.parents[2]
+    # Every conversation directory, so one without a transcript is reported, not skipped.
+    for conversation in sorted(p for p in (home() / "brain").glob("*") if p.is_dir()):
+        path = _full(conversation)
         try:
-            yield base.DiscoveredSession(conversation.name, path, path.stat().st_size, None, path.stat().st_mtime_ns)
+            stat = path.stat()
+            yield base.DiscoveredSession(conversation.name, path, stat.st_size, None, stat.st_mtime_ns)
         except OSError:
-            yield base.DiscoveredSession(None, path, 0)
+            yield base.DiscoveredSession(conversation.name, path, 0)
 
 
 def _unread(conversation: Path, sources: list[Path]) -> list[Path]:
@@ -45,12 +51,19 @@ def _unread(conversation: Path, sources: list[Path]) -> list[Path]:
     for path in sorted(conversation.rglob("*")):
         if path.is_file() and path.resolve() not in keep:
             found.append(path)
+    # The CLI's own per-conversation files outside the conversation directory.
+    cli = conversation.parent.parent
+    for path in (cli / "conversations" / f"{conversation.name}.db", cli / "annotations" / f"{conversation.name}.pbtxt"):
+        if path.is_file():
+            found.append(path)
     return found
 
 
 def sessions(paths):
     for path in paths or [s.path for s in discover()]:
         conversation = path.parents[2]
+        # A conversation without a transcript keeps its f1 path: reading it fails, and
+        # dump counts the conversation as failed instead of leaving it out silently.
         short = path.with_name("transcript.jsonl")
         sources = [base.Source("f1", path, "record", SOURCE_FORMAT)]
         if short.is_file():

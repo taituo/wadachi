@@ -78,3 +78,18 @@ def test_dump_discovers_with_its_own_home(tmp_path, monkeypatch):
     assert validate_store(store) == []
     # --keep-raw keeps the unread files too.
     assert len(list((store / "raw").iterdir())) == 2 + 5
+
+
+def test_conversation_without_transcript_is_a_failure_not_silence(tmp_path, monkeypatch):
+    import shutil
+    home = tmp_path / "agy"
+    shutil.copytree(ROOT / "brain", home / "brain")
+    (home / "brain" / "00000000-0000-4000-8000-0000000a9e02" / "scratch").mkdir(parents=True)
+    (home / "conversations").mkdir()
+    (home / "conversations" / f"{CONVERSATION}.db").write_bytes(b"invented")
+    monkeypatch.setenv("WADACHI_ANTIGRAVITY_HOME", str(home))
+    assert len(list(ag.discover())) == 2
+    store = tmp_path / "store"
+    assert dump(store, harness="antigravity") == 1  # one failed
+    header = validate_store(store) == [] and next((store / "sessions").glob("*.jsonl")).read_text().split("\n")[0]
+    assert "conversations/" + CONVERSATION + ".db" in header  # listed in unread

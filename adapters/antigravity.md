@@ -22,13 +22,17 @@ header has none.
 | `messages/*.json` holds messages between conversations and tasks: `sender`, `recipient`, `content`, `sourceMetadata.tool.conversationId`, `stepIndex`, `timestamp` | measured (1.5.18) |
 | The conversation id is only the directory name; it is the id `agy --conversation=<id>` takes | measured (1.5.18), documented |
 | `history.jsonl` in the CLI's home indexes prompts of every conversation (`display`, `timestamp`, `workspace`, `conversationId`) | measured (1.5.18) |
-| `conversations/` with protocol buffers; `/fork` | reported; not in this corpus |
+| `conversations/<id>.db` is a SQLite database per conversation (tables `trajectory_meta`, `steps`, `gen_metadata`, `executor_metadata`, `parent_references`, `trajectory_metadata_blob`, `battle_mode_infos`; step data as protocol buffer blobs); every conversation has one, and one of 7 had no transcript at all | measured (1.5.18) |
+| `/fork` | reported; not in this corpus |
 
 `f1` is `transcript_full.jsonl`. `f2` is reserved for a hook log. `f3` is
 `transcript.jsonl`, listed with `truncated: true` and not read for events.
 Every other file in the conversation's directory (chunks, step outputs,
-messages, scratch files) is listed in the header's `unread` with its hash, and
-kept by `wadachi dump --keep-raw`. Positions are `@step/<step_index>`.
+messages, scratch files), and the CLI's `conversations/<id>.db` and
+`annotations/<id>.pbtxt` for it, are listed in the header's `unread` with
+their hashes, and kept by `wadachi dump --keep-raw`. A conversation directory
+without a transcript is still discovered; its conversion fails and `dump`
+counts it, so it is never left out silently. Positions are `@step/<step_index>`.
 The native id comes from the directory name, marked
 `how: {"native_id": "inferred:conversation-directory"}`.
 
@@ -76,3 +80,6 @@ the raw files; its findings are fixed in converter 0.2.0.
   not read yet, so no `parent` is set.
 - `steps/<index>/output.txt` can hold more than the step's content. It is
   listed and hashed, not read.
+- The per-conversation SQLite database is the CLI's own record and exists
+  even when the transcript does not. Its blobs are protocol buffers without a
+  published schema; it is listed and hashed, not read.
