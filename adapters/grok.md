@@ -17,7 +17,7 @@ The CLI's own user guide is installed under `GROK_HOME/docs`.
 | `arguments` is a JSON-encoded string | measured (1.0.92) |
 | `events.jsonl` is timed telemetry (`ts`, UTC `Z`): `turn_started` (`session_id`, `model_id`, `turn_number`), `phase_changed`, `loop_started`, `first_token`, `permission_requested`, `permission_resolved` (`decision`, `wait_ms`), `tool_started`, `tool_completed` (`tool_call_id`, `outcome` `success` or `error`, `duration_ms`), `turn_ended` | measured (1.0.92) |
 | `summary.json` holds `info.id` (the session id, equal to the directory name), `info.cwd`, `created_at`, `current_model_id`, `chat_format_version` (1) and titles | measured (1.0.92) |
-| `prompt_context.json` holds the CLI `version`, `is_non_interactive`, `working_directory` and prompt settings | measured (1.0.92) |
+| `prompt_context.json` holds `version` (the number 1: the prompt context's format, not the CLI's version), `build_timestamp_utc`, `is_non_interactive`, `working_directory` and prompt settings. No session file records the CLI version | measured (1.0.92) |
 | `system_prompt.txt` is the system prompt; `tool_definitions.json` the tool list | measured (1.0.92) |
 | `usage.json` holds session and per-turn tokens and cost in ticks (10¹⁰ per USD) | measured (1.0.92), documented |
 | `updates.jsonl` is the client protocol stream (`session/update`: message and thought chunks, tool calls and updates; `_x.ai/...` extensions), timed | measured (1.0.92) |
@@ -36,7 +36,7 @@ line with a unique id is `@reasoning/<id>`.
 
 | Source | Mapping | Status |
 |---|---|---|
-| header | native id `info.id`, `cwd`, `model`, `started_at` from `summary.json`; `harness.version` from `prompt_context.json`; `mode` headless or interactive from `is_non_interactive` | measured (1.0.92) |
+| header | native id `info.id`, `cwd`, `model`, `started_at` from `summary.json`; `mode` headless or interactive from `prompt_context.json` `is_non_interactive`; no `harness.version` (not recorded), so `dump` reports every Grok session as unmeasured | measured (1.0.92) |
 | `system` | `context`, role `system` | measured (1.0.92) |
 | `user` with `synthetic_reason` | `context`, role `user`, `name` the reason | measured (1.0.92) |
 | `user` | `prompt`; actor caller in a headless session, else human (`how: inferred:session-interactivity`) | measured (1.0.92) |

@@ -36,7 +36,8 @@ def test_matches_expected_output(tmp_path):
 def test_events_sources_and_links():
     lines = convert()
     header, events = lines[0], lines[1:]
-    assert header["native_id"] == SID and header["harness"]["version"] == "9.8.7"
+    assert header["native_id"] == SID
+    assert "version" not in header["harness"]  # prompt_context.version is a format number, not the CLI's
     assert header["mode"] == "headless" and header["cwd"] == "/home/user/project"
     assert list(header["files"]) == ["f1", "f3", "f4", "f5", "f6", "f7", "f8"]
     assert [u["path"].rsplit(SID + "/", 1)[1] for u in header["unread"]] == [

@@ -11,7 +11,7 @@ from . import base
 
 HARNESS = "grok"
 SOURCE_FORMAT = "grok-chat-history-jsonl"
-CONVERTER = {"name": "wadachi-grok", "version": "0.1.0", "measured": ["1.0.92"]}
+CONVERTER = {"name": "wadachi-grok", "version": "0.1.1", "measured": ["1.0.92"]}
 SELF_FROM_HERDR = True
 # f1 chat history; f2 reserved for a hook log; then fixed aux keys.
 AUX = {"f3": ("events.jsonl", "grok-events-jsonl", True),
@@ -116,8 +116,7 @@ class _Session:
     def session_header(self):
         summary, context, usage = self._one("f6"), self._one("f7"), self._one("f8")
         header = {"harness": {"name": HARNESS}}
-        if isinstance(context.get("version"), str):
-            header["harness"]["version"] = context["version"]
+        # prompt_context.version is the prompt format's number, not the CLI's version; none is recorded.
         info = summary.get("info") or {}
         if isinstance(info.get("cwd"), str):
             header["cwd"] = info["cwd"]
