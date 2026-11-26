@@ -293,3 +293,26 @@ def test_default_discovery_and_explicit_paths(tmp_path, converter):
     converter.discover = lambda: [DiscoveredSession("invented", src.path, src.path.stat().st_size)]
     assert list(sessions(converter, []))[0].sources[0].path == src.path
     assert list(sessions(converter, [src.path]))[0].sources[0].path == src.path
+
+
+def test_prepared_adapter_uses_same_snapshot_and_merges_header_metadata(tmp_path, converter):
+    src = source(tmp_path, rows=[dict(record(), session="constructed-session")])
+    seen = []
+
+    class Prepared(ConstructedConverter):
+        def session_header(self):
+            return {"model": "constructed-model", "x": {"constructed": {"count": 1}}}
+
+    def prepare(records):
+        seen.append(records)
+        # A live file can grow after the shared read; mapping must use the snapshot.
+        with src.path.open("a") as stream:
+            stream.write(json.dumps(record()) + "\n")
+        return Prepared()
+
+    converter.prepare = prepare
+    lines = convert(converter, session(src))
+    assert len(lines) == 2 and len(seen[0]) == 1
+    assert lines[0]["model"] == "constructed-model"
+    assert lines[0]["x"] == {"constructed": {"count": 1}, "fixture": {"constructed": True}}
+    checked(lines, tmp_path)

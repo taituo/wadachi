@@ -227,15 +227,25 @@ def convert(converter: Converter, session: SessionInput | Path, hook_path: Path 
         loaded.append((source, cleaned))
         if source.role == "record" and source.events:
             records.extend(cleaned)
+    # A fresh adapter may need session context for duplicate views and steers.
+    # It sees only records from this same snapshot, never a second live read.
+    if hasattr(converter, "prepare"):
+        converter = converter.prepare(records)
+    metadata = converter.session_header() if hasattr(converter, "session_header") else {}
+    for name, value in session.header.items():
+        if name in ("x", "raw", "how") and isinstance(metadata.get(name), dict) and isinstance(value, dict):
+            metadata[name] = metadata[name] | value
+        else:
+            metadata[name] = value
     nid = section_2(session.native_id or converter.native_id(records))
     sid = session_id(converter.HARNESS, native_id=nid, path=files["f1"]["path"])
     header = {"type": "session", "format": FORMAT, "id": sid, "harness": {"name": converter.HARNESS},
               "files": files, "converter": converter.CONVERTER}
     if nid:
         header["native_id"] = nid
-    if (header.keys() - {"harness"}) & session.header.keys():
+    if (header.keys() - {"harness"}) & metadata.keys():
         raise ValueError("session metadata must not replace derived header fields")
-    header.update(session.header)
+    header.update(metadata)
     if header["harness"].get("name") != converter.HARNESS:
         raise ValueError("session metadata must keep the converter's harness name")
 

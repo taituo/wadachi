@@ -5,6 +5,7 @@
     wadachi canonical [FILE]            rewrite JSON lines canonically (RFC 8785)
     wadachi convert HARNESS [PATH...] --store DIR [--hooks LOG]
     wadachi convert HARNESS --list      list discovered native ids, paths and sizes
+    wadachi dump [--harness NAME] [--self | --from-herdr] [--store DIR]
     wadachi id session HARNESS (--native-id ID | --path PATH)
     wadachi id event SESSION_ID SRC
 """
@@ -103,6 +104,16 @@ def _convert(args: argparse.Namespace) -> int:
     return 0
 
 
+def _dump(args: argparse.Namespace) -> int:
+    from .dump import DumpError, dump
+
+    try:
+        return dump(args.store, args.harness, args.self, args.from_herdr, args.keep_raw, args.allow_inside_git)
+    except DumpError as err:
+        print(str(err), file=sys.stderr)
+        return 2
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="wadachi", description="Tools for wadachi session records.")
     parser.add_argument("--version", action="version", version=f"wadachi {__version__}")
@@ -131,6 +142,18 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--list", action="store_true", help="list discovered native ids, paths and sizes")
     p.set_defaults(func=_convert)
 
+    from .dump import default_store
+
+    p = sub.add_parser("dump", help="dump discovered sessions without printing content")
+    p.add_argument("--store", type=Path, default=default_store())
+    p.add_argument("--harness")
+    select = p.add_mutually_exclusive_group()
+    select.add_argument("--self", action="store_true", help="only the calling agent's session")
+    select.add_argument("--from-herdr", action="store_true", help="only session ids in Herdr's live snapshot")
+    p.add_argument("--keep-raw", action="store_true", help="retain source snapshots under raw/<sha256>")
+    p.add_argument("--allow-inside-git", action="store_true", help="allow the store inside a git working tree")
+    p.set_defaults(func=_dump)
+
     p = sub.add_parser("id", help="derive a session or event id")
     ids = p.add_subparsers(dest="what", required=True)
     q = ids.add_parser("session")
@@ -144,6 +167,8 @@ def main(argv: list[str] | None = None) -> int:
     p.set_defaults(func=_id)
 
     args = parser.parse_args(argv)
+    if args.command == "dump" and args.harness is not None and args.harness not in REGISTRY:
+        parser.error(f"unknown harness: {args.harness}")
     if args.command == "convert":
         if args.harness not in REGISTRY:
             parser.error(f"unknown harness: {args.harness}")
