@@ -109,6 +109,16 @@ that the base hashes. Its optional `session_header()` returns recorded header
 metadata. Keep turn matching and duplicate-view rules in the adapter; ids,
 ordering and canonical output still belong to the base.
 
+Several discovered sessions may share a database path. Implement
+`selected_sessions(discovered)` so dump keeps selected native ids through
+conversion. `DiscoveredSession` may carry recorded cwd and update time. An
+optional `select_self(discovered, cwd)` returns descriptors for a reported
+fallback; it must not guess values into events.
+`caller_present()` may identify the calling harness from its actual process
+environment when no session id is exported. Unqualified `--self` selects one
+harness, not a fallback session from every registered harness. Ambiguous
+callers require `--harness`.
+
 For more than one record file, implement `sessions(paths)` returning
 `base.SessionInput` items. It also handles discovery when paths is empty.
 Each `base.Source` has a fixed key, path, role and format. Reserve missing
@@ -124,6 +134,13 @@ use `read_sqlite(path, rows)`: it reads rows from a consistent physical backup
 and hashes that backup's bytes (SPEC.md 3.3). The rows callback supplies a
 fixed SQL order and positions `"@" + escape_key(row_key)`. Never hash a JSON
 dump of rows or just the live database file while its WAL can change.
+
+For a large database, `sqlite_backup(path)` supplies a consistent temporary
+copy without loading its full image into memory. A converter may copy selected
+rows and required context into a per-session SQLite snapshot. Document its
+selection and insertion order, preserve row values and foreign keys, read
+from that snapshot, and hash its physical bytes. The OpenCode adapter is the
+working example. Do not replace the source hash with a JSON row digest.
 
 Event specs use `pos`, `type`, `actor`, `data` and optional event fields.
 `of_call` links to a record tool call; `of_src` links to a source position.

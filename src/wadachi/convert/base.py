@@ -14,6 +14,7 @@ import os
 import re
 import sqlite3
 import tempfile
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Iterable, Protocol, Sequence
@@ -66,23 +67,34 @@ def read_jsonl(path: Path) -> Snapshot:
     return Snapshot(data, records)
 
 
-def read_sqlite(path: Path, rows: Callable[[sqlite3.Connection], Records]) -> Snapshot:
-    """Hash a physical snapshot's bytes, as SPEC.md 3.3 requires.
+@contextmanager
+def sqlite_backup(path: Path):
+    """A consistent physical copy. The live source is opened read-only.
 
-    SQLite backup includes committed WAL data in a consistent database copy.
-    Read rows only from that copy. The adapter supplies an explicit SQL order
-    and positions such as '@' + escape_key('part/' + row_id). No row dump or
-    concatenation of the live database and WAL is used as the hash input.
+    Adapters can share this copy across many sessions without loading the
+    entire database into memory for each one. No migrations or write locks.
     """
     with tempfile.TemporaryDirectory(prefix="wadachi-snapshot-") as directory:
         copy = Path(directory) / "snapshot.sqlite"
         source = sqlite3.connect(Path(os.path.abspath(path)).as_uri() + "?mode=ro", uri=True)
-        target = sqlite3.connect(copy)
         try:
-            source.backup(target)
+            target = sqlite3.connect(copy)
+            try:
+                source.backup(target)
+            finally:
+                target.close()
         finally:
-            target.close()
             source.close()
+        yield copy
+
+
+def read_sqlite(path: Path, rows: Callable[[sqlite3.Connection], Records]) -> Snapshot:
+    """Hash the same physical snapshot whose rows are read (SPEC.md 3.3).
+
+    SQLite backup includes committed WAL data. No row dump or concatenation
+    of the live database and WAL is used as the hash input.
+    """
+    with sqlite_backup(path) as copy:
         data = copy.read_bytes()
         snapshot = sqlite3.connect(copy.as_uri() + "?mode=ro", uri=True)
         try:
@@ -137,6 +149,8 @@ class DiscoveredSession:
     native_id: str | None
     path: Path
     size: int
+    cwd: str | None = None
+    updated: int | None = None
 
 
 class Converter(Protocol):

@@ -38,7 +38,7 @@ def guard_store(store: Path, allow_inside_git: bool) -> None:
             raise DumpError("refusing to write a store inside a git working tree; use --allow-inside-git")
 
 
-def herdr_sessions() -> dict[str, set[str]]:
+def herdr_sessions(pane_id: str | None = None) -> dict[str, set[str]]:
     try:
         run = subprocess.run(["herdr", "api", "snapshot"], capture_output=True, text=True, check=True, timeout=15)
         data = json.loads(run.stdout)["result"]["snapshot"]
@@ -47,6 +47,8 @@ def herdr_sessions() -> dict[str, set[str]]:
     aliases = {"claude": "claude-code", "agy": "antigravity"}
     selected = {}
     for pane in data.get("panes", []):
+        if pane_id is not None and pane.get("pane_id") != pane_id:
+            continue
         if pane.get("agent_status") in ("stopped", "exited"):
             continue
         session = pane.get("agent_session") or {}
@@ -65,9 +67,12 @@ def _freeze(inp):
 
 
 def _identity(converter, inp, loaded):
-    records = [(pos, base.section_2(rec)) for src, snap in loaded if src.role == "record" and src.events
-               for pos, rec in snap.records]
-    nid = base.section_2(inp.native_id or converter.native_id(records))
+    nid = inp.native_id
+    if not nid:
+        records = [(pos, base.section_2(rec)) for src, snap in loaded if src.role == "record" and src.events
+                   for pos, rec in snap.records]
+        nid = converter.native_id(records)
+    nid = base.section_2(nid)
     main = next(s for s in inp.sources if s.key == "f1")
     return session_id(converter.HARNESS, native_id=nid, path=base.display_path(main.path))
 
@@ -98,10 +103,23 @@ def _keep_raw(store, loaded):
             raise DumpError("a retained raw source has the wrong hash")
 
 
-def _self_paths(converter, discovered):
+def _self_sessions(converter, discovered):
     nid = converter.self_id() if hasattr(converter, "self_id") else None
-    matches = [s.path for s in discovered if nid and s.native_id == nid]
+    matches = [s for s in discovered if nid and s.native_id == nid]
     if matches:
+        return matches
+    if getattr(converter, "SELF_FROM_HERDR", False) and os.environ.get("HERDR_PANE_ID"):
+        try:
+            ids = herdr_sessions(os.environ["HERDR_PANE_ID"]).get(converter.HARNESS, set())
+            matches = [s for s in discovered if s.native_id in ids]
+            if matches:
+                return matches
+        except DumpError:
+            pass
+    if hasattr(converter, "select_self"):
+        matches = converter.select_self(discovered, str(Path.cwd()))
+        if matches:
+            print(f"{converter.HARNESS}: --self fallback: newest session with recorded cwd equal to current directory", file=sys.stderr)
         return matches
     # Select on recorded cwd, never the converter's guessed or completed path.
     candidates = []
@@ -111,19 +129,42 @@ def _self_paths(converter, discovered):
             snapshot = base.read_jsonl(found.path)
             meta = next((r.get("payload", {}) for _, r in snapshot.records if r.get("type") == "session_meta"), {})
             if meta.get("cwd") == cwd:
-                candidates.append((found.path.stat().st_mtime_ns, found.path))
+                candidates.append((found.path.stat().st_mtime_ns, str(found.path), found))
         except (OSError, ValueError):
             continue
     if candidates:
         print(f"{converter.HARNESS}: --self fallback: newest session with recorded cwd equal to current directory", file=sys.stderr)
-        return [max(candidates)[1]]
+        return [max(candidates, key=lambda item: item[:2])[2]]
     return []
+
+
+def _calling_harness():
+    exact = [name for name, converter in REGISTRY.items()
+             if hasattr(converter, "self_id") and converter.self_id()]
+    if len(exact) == 1:
+        return exact[0]
+    present = [name for name, converter in REGISTRY.items()
+               if hasattr(converter, "caller_present") and converter.caller_present()]
+    if not exact and len(present) == 1:
+        return present[0]
+    if not exact and os.environ.get("HERDR_PANE_ID"):
+        try:
+            names = set(herdr_sessions(os.environ["HERDR_PANE_ID"])) & REGISTRY.keys()
+            if len(names) == 1:
+                return next(iter(names))
+        except DumpError:
+            pass
+    if len(REGISTRY) == 1:
+        return next(iter(REGISTRY))
+    raise DumpError("cannot identify one calling harness; use --harness NAME with --self")
 
 
 def dump(store: Path, harness: str | None = None, self_only: bool = False,
          from_herdr: bool = False, keep_raw: bool = False, allow_inside_git: bool = False) -> int:
     store = store.expanduser()
     guard_store(store, allow_inside_git)
+    if self_only and harness is None:
+        harness = _calling_harness()
     selection = herdr_sessions() if from_herdr else None
     failed_any = False
     for name, converter in sorted(REGISTRY.items()):
@@ -133,17 +174,20 @@ def dump(store: Path, harness: str | None = None, self_only: bool = False,
         try:
             discovered = list(converter.discover())
             if self_only:
-                paths = _self_paths(converter, discovered)
-                if not paths:
+                chosen = _self_sessions(converter, discovered)
+                if not chosen:
                     failed += 1
             elif selection is not None:
                 ids = selection.get(name, set())
-                paths = [s.path for s in discovered if s.native_id in ids]
+                chosen = [s for s in discovered if s.native_id in ids]
                 failed += len(ids - {s.native_id for s in discovered})
             else:
-                paths = [s.path for s in discovered]
+                chosen = discovered
             # Empty paths must not trigger an adapter's discover-all fallback.
-            inputs = iter(base.sessions(converter, paths)) if paths else iter(())
+            if chosen and hasattr(converter, "selected_sessions"):
+                inputs = iter(converter.selected_sessions(chosen))
+            else:
+                inputs = iter(base.sessions(converter, [s.path for s in chosen])) if chosen else iter(())
             while True:
                 try:
                     inp = next(inputs)
