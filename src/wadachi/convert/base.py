@@ -161,7 +161,7 @@ class DiscoveredSession:
 class Converter(Protocol):
     HARNESS: str
     SOURCE_FORMAT: str
-    CONVERTER: dict[str, str]
+    CONVERTER: dict[str, object]  # name, version, measured (a list of harness versions)
     KINDS: dict
 
     def native_id(self, records: Records) -> str | None: ...
