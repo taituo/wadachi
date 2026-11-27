@@ -63,6 +63,8 @@ agent worked, two minutes nine seconds, and the one path its edit named.
 | [`conformance/`](conformance/) | files a validator must accept, and files it must reject with a named error |
 | [`skills/wadachi/`](skills/wadachi/SKILL.md) | skill for agents that read, search, cite and annotate records |
 | [`skills/wadachi-adapter/`](skills/wadachi-adapter/SKILL.md) | skill and converter template for supporting a new harness |
+| [`skills/agent-sandbox/`](skills/agent-sandbox/SKILL.md) | skill for running agent CLIs sandboxed, with logins moved in and versions pinned |
+| [`sandbox/`](sandbox/README.md) | bubblewrap runner, pinned image and Kubernetes check for the agent CLIs |
 | [`adapters/`](adapters/) | what is known about each harness's records and hooks, and how sure it is |
 | [`docs/containers.md`](docs/containers.md) | keeping transcripts from sandboxes and containers, custom homes, pinned versions |
 

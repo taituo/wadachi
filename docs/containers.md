@@ -33,6 +33,10 @@ it. When the container goes away, so does the record. Three things keep it:
    be checked before their output is relied on, and `unversioned=N` for
    sessions whose harness records no version (Antigravity, Grok).
 
+`sandbox/` has all of this ready: bubblewrap runs with logins kept outside
+(`cliauth.sh`), an image with every CLI pinned, and a Kubernetes check. See
+[sandbox/README.md](../sandbox/README.md). The examples below show the idea.
+
 ## Example: bubblewrap with separate logins
 
 Logins stay outside the sandbox and are copied into a throwaway home for one
