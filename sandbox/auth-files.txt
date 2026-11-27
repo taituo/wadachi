@@ -1,0 +1,9 @@
+# The files that carry each CLI's login, relative to $HOME. Measured 2026-11-27
+# with the versions in versions.lock: an empty HOME holding only these files,
+# no tty, answered a headless prompt (bwrap and a k3s pod). Keep them writable:
+# the CLIs refresh tokens in place.
+claude   .claude/.credentials.json .claude.json
+codex    .codex/auth.json
+opencode .local/share/opencode/auth.json
+agy      .gemini/antigravity-cli/antigravity-oauth-token
+grok     .grok/auth.json

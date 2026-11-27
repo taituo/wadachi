@@ -1,0 +1,9 @@
+# name     version   source                                                  checksum
+# cliauth.sh compares the first two columns with the installed CLIs;
+# build-image.sh installs exactly these into the image.
+claude     2.1.296   npm:@anthropic-ai/claude-code                           -
+codex      0.167.1   npm:@openai/codex                                       -
+opencode   1.19.6    npm:opencode-ai                                         -
+agy        1.5.18    https://storage.googleapis.com/antigravity-public/antigravity-cli/1.5.18-6386224290725888/linux-x64/cli_linux_x64.tar.gz  sha512:ef379ec869719112f696e8c7cfddf776618712e58fc38e53df80801d6528abb4677782c7c8778f9c09c9123fa44c2c32675d228c06f2a8f7a8f4214e75f5bb26
+grok       1.0.92    https://x.ai/cli/grok-1.0.92-linux-x86_64               sha256:add4d201dbf2c0bd6077a36feb55a76939de30bae48dbb06f16b2307d38ceacb
+node       22.23.3   image:docker.io/library/node:22.23.3-bookworm-slim@sha256:3ed98443660ff48413b5af19ecefce3b9d50845a901a43420d47cc63a9fddbe9  -
