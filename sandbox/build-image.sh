@@ -7,13 +7,14 @@ set -euo pipefail
 . "$(dirname "$(readlink -f "$0")")/lib.sh"
 
 k3s=0; [ "${1:-}" = --k3s ] && { k3s=1; shift; }
-commit=$(git -C "$SANDBOX_DIR" rev-parse "${1:-HEAD}")
+repo=$(git -C "$SANDBOX_DIR" rev-parse --show-toplevel)
+commit=$(git -C "$repo" rev-parse "${1:-HEAD}")
 engine=$(command -v podman || command -v docker || { echo "need podman or docker" >&2; exit 2; })
 image="localhost/wadachi-sandbox:${commit:0:12}"
 
 ctx=$(mktemp -d); trap 'rm -rf "$ctx"' EXIT
 # Only tracked files of that commit: nothing untracked or ignored (logins, .private) can get in.
-git -C "$SANDBOX_DIR" archive --format=tar "$commit" | tar -x -C "$ctx"
+git -C "$repo" archive --format=tar "$commit" | tar -x -C "$ctx"
 lock="$ctx/sandbox/versions.lock"
 pin() { CLIAUTH_LOCK="$lock" pinned "$@"; }
 
