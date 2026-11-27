@@ -116,7 +116,10 @@ grep -l 'parse_read' sessions/*.jsonl
   said about the source (a fetched page summarised by a second model, a
   subagent's report). The source itself was never in the session. Quote it as
   that model's account, and follow `parent` links to the child's record for
-  the step before.
+  the step before. A subagent's report is in its `subagent_end` when there is
+  one; then the subagent call's `tool_result` (`text_origin` `tool`) is only
+  the harness's note. Without a `subagent_end`, the report is that
+  `tool_result`, with `text_origin` `agent`.
 - **Inferred is not recorded.** A value listed in `how` was guessed by an
   adapter's rule. Say so when you use it.
 - **Missing is missing.** No `t` means the time was not recorded. Do not

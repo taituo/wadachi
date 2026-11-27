@@ -59,18 +59,26 @@ section 4.2). Things that are easy to get wrong:
   ids collide.
 - **Prompts versus steers.** A message the human sent while the agent was
   still working is a `steer`, not a `prompt`; it does not start a turn. Find
-  out how the harness marks queued or mid-turn messages.
+  out how the harness marks queued or mid-turn messages. If the source has no
+  such marker, map every human message as a `prompt` and say so in
+  `adapters/<harness>.md`; do not guess from timing or wording.
 - **Who sent the prompt.** In headless and protocol sessions the prompt usually
   comes from a program: `actor: "caller"`, not `human`.
 - **Exit codes.** Find where the real exit code is. Keep the harness's own
   status as `status_as_recorded` next to it: the value of the field the harness
   uses, a string as it is, anything else as its canonical JSON (`true`).
   Document which field. Harnesses have been seen to record a failed shell call
-  as a success.
+  as a success. An exit value that is not an integer (`null`, a string) is not
+  an `exit_code`; keep it in `raw`.
 - **Arguments.** Keep `args` as recorded. Arguments the harness stored as a
   JSON-encoded string stay a string.
 - **Missing fields stay missing.** No `text` means no `text`, not `""`; no tool
   name means no `tool`. The digest shows the difference (`h?` against `h0`).
+  A result record without a tool name gets no `tool` or `kind`: its `of` link
+  already leads to the call that has them.
+- **Times.** Keep source order even when converted times go backwards (a
+  `+02:00` time can be earlier in UTC than the event before it). Never reorder
+  by `t` and never fill a missing `t` from a neighbour.
 - **Paths.** Put every path the tool names in `paths`, in order. A multi-file
   read keeps all of them, not the first. Paths parsed out of a shell command are
   a guess: record them only with `how: {"data.paths": "inferred:<rule>"}`.
@@ -117,13 +125,30 @@ template is a thin example on top of it. Do not copy these parts into adapters:
 Supply `HARNESS`, `SOURCE_FORMAT`, `CONVERTER`, `KINDS`, `native_id(records)`,
 `map_record(position, record)` and `discover()`. `map_hook` is optional; the
 default reads `wadachi-hook/0.1`. Register the module in
-`src/wadachi/convert/__init__.py`. The CLI uses it for `wadachi convert`.
+`src/wadachi/convert/__init__.py`. The CLI uses it: `wadachi convert <harness>
+FILE... --store DIR`, then `wadachi validate DIR` and `wadachi digest` on the
+session file it printed.
+`CONVERTER` is `{"name", "version", "measured": [harness versions]}`.
+`discover()` lists sessions in the harness's usual place; it returns `[]`
+when the harness has no fixed place.
 
-When mapping needs session context, `prepare(records)` may return a fresh
-adapter for that conversion. The records come from the same complete snapshot
-that the base hashes. Its optional `session_header()` returns recorded header
-metadata. Keep turn matching and duplicate-view rules in the adapter; ids,
-ordering and canonical output still belong to the base.
+When mapping needs session context, `prepare(records)` (a function of the
+module, or a method) may return a fresh adapter for that conversion. The
+records come from the same complete snapshot that the base hashes. Its
+optional `session_header()` returns recorded header metadata. Keep turn
+matching and duplicate-view rules in the adapter; ids, ordering and canonical
+output still belong to the base.
+
+**Metadata records** (a session's id, cwd, version, model) go to the header
+this way, and only this way: `prepare` finds them, `session_header()` returns
+`harness` (`name` and `version`), `cwd`, `model` and the whole record under
+`raw.<name>`, and `map_record` returns `None` for them. `None` without the
+record in the header's `raw` loses it. Any other record `map_record` cannot
+map returns `[]`, and the base keeps it as a `record` event, named from its
+`type` field. If the harness names record types with another field, define
+`unmapped(position, record)` to set `data.name`. The template shows all three.
+When a result's mapping depends on its call (`text_origin` from the call's
+tool), match them in `prepare` too, never by a second read.
 
 Several discovered sessions may share a database path. Implement
 `selected_sessions(discovered)` so dump keeps selected native ids through

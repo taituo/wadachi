@@ -96,3 +96,27 @@ def test_applies_section_2_and_keeps_unmapped_fields(tmp_path, template):
     assert prompt["data"]["text"] == "cut \ufffd" and prompt["raw"]["big"] == "12345678901234567890"
     assert text["raw"] == {"model": "m1", "usage": {"in": 3}}
     assert "paths" not in call["data"] and call["data"]["args"] == {"paths": [None, 5]}
+
+
+def test_meta_null_exit_and_unknown_role(tmp_path, template):
+    record = tmp_path / "s.jsonl"
+    write_jsonl(record, [
+        {"id": "r0", "role": "meta", "session": "toy-9", "version": "1.2.3", "cwd": "/work", "model": "invented"},
+        {"id": "r1", "role": "user", "text": "go"},
+        {"id": "r2", "role": "assistant", "calls": [{"id": "c1", "name": "run"}]},
+        {"id": "r3", "role": "tool", "call": "c1", "exit": None},
+        {"id": "r4", "role": "telemetry", "tokens": 5},
+        {"id": "r5", "role": "meta", "note": "a second one"},
+    ])
+    out = template.write_session(template.convert(record), tmp_path / "store")
+    checked = validate_session(out)
+    assert [str(p) for p in checked.problems] == []
+    header = json.loads(out.read_text().splitlines()[0])
+    assert header["harness"] == {"name": "example-harness", "version": "1.2.3"}
+    assert header["cwd"] == "/work" and header["model"] == "invented" and header["native_id"] == "toy-9"
+    assert header["raw"]["meta"]["id"] == "r0"
+    types = [(e["type"], e["data"].get("name")) for e in checked.events]
+    assert types == [("prompt", None), ("tool_call", None), ("tool_result", None),
+                     ("record", "telemetry"), ("record", "meta")]  # only the header's meta is left out
+    result = checked.events[2]
+    assert "exit_code" not in result["data"] and result["raw"] == {"exit": None}
